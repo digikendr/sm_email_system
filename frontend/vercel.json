@@ -2,19 +2,19 @@
   "rewrites": [
     {
       "source": "/api/:match*",
-      "destination": "http://13.233.26.236:3000/api/:match*"
+      "destination": "http://13.233.26.236/api/:match*"
     },
     {
       "source": "/bill",
-      "destination": "http://13.233.26.236:3000/bill"
+      "destination": "http://13.233.26.236/bill"
     },
     {
       "source": "/invoice/:match*",
-      "destination": "http://13.233.26.236:3000/invoice/:match*"
+      "destination": "http://13.233.26.236/invoice/:match*"
     },
     {
       "source": "/pdfs/:match*",
-      "destination": "http://13.233.26.236:3000/pdfs/:match*"
+      "destination": "http://13.233.26.236/pdfs/:match*"
     },
     {
       "source": "/(.*)",
