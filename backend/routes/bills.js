@@ -80,8 +80,19 @@ router.post('/bill', async (req, res) => {
 
       // Prepare email URLs using base URL and the secure token
       // Note: We do NOT print the token in these console logs to maintain confidentiality
-      const acceptUrl = `${process.env.BASE_URL}/invoice/accept?token=${dbInvoice.token}`;
-      const rejectUrl = `${process.env.BASE_URL}/invoice/reject?token=${dbInvoice.token}`;
+      let baseUrl = process.env.BASE_URL;
+      const reqOrigin = req.headers.origin;
+      const reqHost = req.headers['x-forwarded-host'] || req.get('host');
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+      
+      if (reqOrigin && !reqOrigin.includes('localhost')) {
+        baseUrl = reqOrigin;
+      } else if (reqHost && !reqHost.includes('localhost')) {
+        baseUrl = `${protocol}://${reqHost}`;
+      }
+
+      const acceptUrl = `${baseUrl}/invoice/accept?token=${dbInvoice.token}`;
+      const rejectUrl = `${baseUrl}/invoice/reject?token=${dbInvoice.token}`;
 
       console.log(`Firing off invoice email for ${generatedInvoiceNumber} to ${to_entity} (${recipientEmail})...`);
       
