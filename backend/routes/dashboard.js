@@ -2,19 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const jwt = require('jsonwebtoken');
-const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
 const fs = require('fs');
 const path = require('path');
 const { generateReportPDF } = require('../reportGenerator');
 
-const passwordLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 attempts per window
-  message: { success: false, error: 'Too many attempts, please try again after 15 minutes' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 // Helper to format currency
 const formatINR = (amount) => {
@@ -88,7 +80,7 @@ router.get('/api/dashboard', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/api/verify-password', passwordLimiter, (req, res) => {
+router.post('/api/verify-password', (req, res) => {
   const { password } = req.body;
   if (password === process.env.ADMIN_PASSWORD) {
     const token = jwt.sign({ role: 'admin' }, process.env.JWT_SECRET || 'fallback_secret_for_dev', { expiresIn: '1d' });
@@ -110,7 +102,7 @@ router.post('/api/logout', (req, res) => {
   return res.json({ success: true });
 });
 
-router.post('/api/shopkeeper-login', passwordLimiter, (req, res) => {
+router.post('/api/shopkeeper-login', (req, res) => {
   const { store, password } = req.body;
   
   let validPassword = null;
