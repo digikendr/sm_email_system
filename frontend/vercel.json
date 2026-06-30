@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:match*",
+      "destination": "http://YOUR_EC2_PUBLIC_IP:3000/api/:match*"
+    },
+    {
+      "source": "/bill",
+      "destination": "http://YOUR_EC2_PUBLIC_IP:3000/bill"
+    },
+    {
+      "source": "/invoice",
+      "destination": "http://YOUR_EC2_PUBLIC_IP:3000/invoice"
+    },
+    {
+      "source": "/pdfs/:match*",
+      "destination": "http://YOUR_EC2_PUBLIC_IP:3000/pdfs/:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
