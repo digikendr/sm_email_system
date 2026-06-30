@@ -545,7 +545,7 @@ const INVOICES = [
   { id: 'sipl_sad', title: 'SIPL → Sadvik', from: 'SIPL', to: 'SADVIK', filter: p => p.route === 'SADVIK', rate: 'upper', qty: 'unit', gst: 2.5, hsn: '33074100' },
   { id: 'sipl_ale', title: 'SIPL → Al Eitr', from: 'SIPL', to: 'ALEITR', filter: p => p.route === 'ALEITR', rate: 'upper', qty: 'unit', gst: 2.5, hsn: '33030000' },
   { id: 'sipl_sm', title: 'SIPL → SM (direct)', from: 'SIPL', to: 'SM', filter: p => p.route === 'DIRECT', rate: 'upper', qty: 'unit', gst: 2.5, hsn: '33074100' },
-  { id: 'sfnf_sipl', title: 'SFNF → SIPL', from: 'SFNF', to: 'SIPL', filter: () => true, rate: 'sfnf', qty: 'kg', gst: 9, hsn: '3302' }
+  { id: 'sfnf_sipl', title: 'SFNF → SIPL', from: 'SFNF', to: 'SIPL', filter: p => !!p.sfnf, rate: 'sfnf', qty: 'kg', gst: 9, hsn: '3302' }
 ];
 
 // Reactive state variables
@@ -1248,16 +1248,18 @@ const sendInvoices = async () => {
         const sg = sub * rate / 100;
         const grand = sub + cg + sg;
         
-        invoicesToSend.push({
-          from_entity: inv.from,
-          to_entity: inv.to,
-          invoice_number: getInvoiceNo(inv.id),
-          amount: sub,
-          gst: cg + sg,
-          grand_total: grand,
-          hsn: inv.hsn,
-          items: invRows
-        });
+        if (grand > 0) {
+          invoicesToSend.push({
+            from_entity: inv.from,
+            to_entity: inv.to,
+            invoice_number: getInvoiceNo(inv.id),
+            amount: sub,
+            gst: cg + sg,
+            grand_total: grand,
+            hsn: inv.hsn,
+            items: invRows
+          });
+        }
       }
     });
 
