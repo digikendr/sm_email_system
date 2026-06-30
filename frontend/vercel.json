@@ -9,8 +9,8 @@
       "destination": "http://13.233.26.236:3000/bill"
     },
     {
-      "source": "/invoice",
-      "destination": "http://13.233.26.236:3000/invoice"
+      "source": "/invoice/:match*",
+      "destination": "http://13.233.26.236:3000/invoice/:match*"
     },
     {
       "source": "/pdfs/:match*",
