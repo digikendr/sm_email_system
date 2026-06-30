@@ -37,7 +37,7 @@ async function sendInvoiceEmail(toEmail, invoice, acceptUrl, rejectUrl) {
   const mailOptions = {
     from: `"Sugandh Mart Ledger" <${process.env.GMAIL_USER}>`,
     to: toEmail,
-    subject: `${invoice.invoice_number} Action Required`,
+    subject: `Action Required: Pending Invoice`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -142,7 +142,7 @@ async function sendInvoiceEmail(toEmail, invoice, acceptUrl, rejectUrl) {
         <div class="container">
           <div class="header">
             <div class="title">Purchase Invoice Acceptance</div>
-            <div class="invoice-num">Invoice #${invoice.invoice_number}</div>
+            <div class="invoice-num">Pending Invoice Assignment</div>
           </div>
           
           <div class="details">

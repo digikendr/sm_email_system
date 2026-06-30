@@ -5,6 +5,7 @@ require('dotenv').config();
 const billsRouter = require('./routes/bills');
 const invoiceRouter = require('./routes/invoice');
 const dashboardRouter = require('./routes/dashboard');
+const productsRouter = require('./routes/products');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(billsRouter);
 app.use(invoiceRouter);
 app.use(dashboardRouter);
+app.use(productsRouter);
 
 // Serve the static counter frontend
 app.use(express.static(path.join(__dirname, '../frontend/dist')));

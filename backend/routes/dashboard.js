@@ -110,6 +110,159 @@ router.post('/api/logout', (req, res) => {
   return res.json({ success: true });
 });
 
+router.post('/api/shopkeeper-login', passwordLimiter, (req, res) => {
+  const { store, password } = req.body;
+  
+  let validPassword = null;
+  if (store === 'SM1 — Thane') validPassword = process.env.STORE_THANE_PASSWORD;
+  else if (store === 'SM2 — Mulund') validPassword = process.env.STORE_MULUND_PASSWORD;
+  else if (store === 'SM Online') validPassword = process.env.STORE_ONLINE_PASSWORD;
+
+  if (validPassword && password === validPassword) {
+    const token = jwt.sign({ role: 'shopkeeper', store }, process.env.JWT_SECRET || 'fallback_secret_for_dev', { expiresIn: '1d' });
+    res.cookie('shopkeeper_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+    return res.json({ success: true, store });
+  }
+  
+  return res.status(401).json({ success: false, error: 'Invalid Store or Password' });
+});
+
+router.get('/api/shopkeeper/me', (req, res) => {
+  const token = req.cookies.shopkeeper_token;
+  if (!token) {
+    return res.status(401).json({ success: false, error: 'Not authenticated' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_for_dev');
+    if (decoded.role === 'shopkeeper' && decoded.store) {
+      return res.json({ success: true, store: decoded.store });
+    }
+    return res.status(401).json({ success: false, error: 'Invalid token payload' });
+  } catch (err) {
+    return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+  }
+});
+
+router.post('/api/shopkeeper-logout', (req, res) => {
+  res.clearCookie('shopkeeper_token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production'
+  });
+  return res.json({ success: true });
+});
+
+router.get('/api/shopkeeper/history', async (req, res) => {
+  const token = req.cookies.shopkeeper_token;
+  if (!token) return res.status(401).json({ success: false, error: 'Not authenticated' });
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_for_dev');
+    if (decoded.role !== 'shopkeeper' || !decoded.store) {
+      return res.status(401).json({ success: false, error: 'Invalid permissions' });
+    }
+    
+    const query = `
+      SELECT s.*, 
+        (
+          SELECT COALESCE(json_agg(ii.*), '[]')
+          FROM (
+             SELECT product_name, category, weight, SUM(qty) as qty 
+             FROM invoice_items 
+             WHERE invoice_id IN (SELECT id FROM invoices WHERE sale_id = s.id AND from_entity = 'SIPL')
+             GROUP BY product_name, category, weight
+          ) ii
+        ) as products,
+        COALESCE(json_agg(i.*) FILTER (WHERE i.id IS NOT NULL), '[]') AS invoices
+      FROM sales s
+      LEFT JOIN invoices i ON i.sale_id = s.id
+      WHERE s.store = $1
+      GROUP BY s.id
+      ORDER BY s.created_at DESC;
+    `;
+    const result = await db.query(query, [decoded.store]);
+    return res.json({ success: true, history: result.rows });
+  } catch (err) {
+    console.error('Shopkeeper history error:', err);
+    return res.status(500).json({ success: false, error: 'Server error retrieving history' });
+  }
+});
+
+router.post('/api/shopkeeper/sales/:id/toggle-item', async (req, res) => {
+  const token = req.cookies.shopkeeper_token;
+  if (!token) return res.status(401).json({ success: false, error: 'Not authenticated' });
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_for_dev');
+    if (decoded.role !== 'shopkeeper' || !decoded.store) {
+      return res.status(401).json({ success: false, error: 'Invalid permissions' });
+    }
+    
+    const { id } = req.params;
+    const { product_name } = req.body;
+    
+    const saleRes = await db.query('SELECT checked_items FROM sales WHERE id = $1 AND store = $2', [id, decoded.store]);
+    if (saleRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Sale not found' });
+    }
+    
+    let checkedItems = saleRes.rows[0].checked_items || [];
+    
+    if (checkedItems.includes(product_name)) {
+      checkedItems = checkedItems.filter(p => p !== product_name);
+    } else {
+      checkedItems.push(product_name);
+    }
+    
+    await db.query(
+      'UPDATE sales SET checked_items = $1::jsonb WHERE id = $2',
+      [JSON.stringify(checkedItems), id]
+    );
+    
+    // We get the current status to return
+    const currentStatusRes = await db.query('SELECT status FROM sales WHERE id = $1', [id]);
+    const currentStatus = currentStatusRes.rows[0]?.status || 'open';
+    
+    return res.json({ success: true, checked_items: checkedItems, status: currentStatus });
+  } catch (err) {
+    console.error('Toggle item error:', err);
+    return res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+router.post('/api/shopkeeper/sales/:id/status', async (req, res) => {
+  const token = req.cookies.shopkeeper_token;
+  if (!token) return res.status(401).json({ success: false, error: 'Not authenticated' });
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_for_dev');
+    if (decoded.role !== 'shopkeeper' || !decoded.store) {
+      return res.status(401).json({ success: false, error: 'Invalid permissions' });
+    }
+    
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    if (!['open', 'closed'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Invalid status' });
+    }
+    
+    const saleRes = await db.query('UPDATE sales SET status = $1 WHERE id = $2 AND store = $3 RETURNING status', [status, id, decoded.store]);
+    if (saleRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Sale not found' });
+    }
+    
+    return res.json({ success: true, status: saleRes.rows[0].status });
+  } catch (err) {
+    console.error('Toggle item error:', err);
+    return res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
 router.get('/api/dashboard/stats', requireAuth, async (req, res) => {
   try {
     const route = req.query.route || null;

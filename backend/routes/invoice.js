@@ -15,6 +15,16 @@ function renderTemplate(fileName, data) {
   return html;
 }
 
+const getPrefix = (from_entity) => {
+  const prefixMap = {
+    SADVIK: 'SSPW',
+    ALEITR: 'AL',
+    SIPL: 'SIPL',
+    SFNF: 'SFFPL'
+  };
+  return prefixMap[from_entity] || 'INV';
+};
+
 // Shared validation helper to lookup and validate invoice by token
 async function getValidatedInvoice(token) {
   const result = await db.query('SELECT * FROM invoices WHERE token = $1', [token]);
@@ -55,14 +65,72 @@ router.get('/invoice/accept', async (req, res) => {
   try {
     const invoice = await getValidatedInvoice(token);
 
-    // Update status to accepted and accepted_at to now
+    const prefix = getPrefix(invoice.from_entity);
+    const html = renderTemplate('confirm_action.html', {
+      action: 'accept',
+      action_capitalized: 'Accept',
+      token,
+      prompt_text: 'Please assign an invoice number for this transaction before you',
+      input_block: `<div class="input-group">
+        <div class="prefix-box">${prefix}</div>
+        <input type="text" name="invoice_number_suffix" required placeholder="00000" autocomplete="off" style="width: 150px;">
+        <input type="hidden" name="prefix" value="${prefix}">
+      </div>`,
+      error_block: '',
+      from_entity: invoice.from_entity,
+      to_entity: invoice.to_entity,
+      grand_total: new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.grand_total)
+    });
+
+    return res.status(200).send(html);
+
+  } catch (err) {
+    console.error('Invoice accept process failed (token not logged for security).');
+    return res.status(400).send(`<h1>Verification Failed</h1><p>${err.message}</p>`);
+  }
+});
+
+// POST /invoice/accept?token=
+router.post('/invoice/accept', async (req, res) => {
+  const { token } = req.query;
+  const { invoice_number_suffix, prefix } = req.body;
+
+  if (!token) {
+    return res.status(400).send('<h1>Bad Request</h1><p>Missing security token.</p>');
+  }
+
+  try {
+    const invoice = await getValidatedInvoice(token);
+    
+    if (!invoice_number_suffix || invoice_number_suffix.trim() === '') {
+      const formPrefix = prefix || getPrefix(invoice.from_entity);
+      const html = renderTemplate('confirm_action.html', {
+        action: 'accept',
+        action_capitalized: 'Accept',
+        token,
+        prompt_text: 'Please assign an invoice number for this transaction before you',
+        input_block: `<div class="input-group">
+          <div class="prefix-box">${formPrefix}</div>
+          <input type="text" name="invoice_number_suffix" required placeholder="00000" autocomplete="off" style="width: 150px;">
+          <input type="hidden" name="prefix" value="${formPrefix}">
+        </div>`,
+        error_block: '<div class="error-msg">Invoice number is required.</div>',
+        from_entity: invoice.from_entity,
+        to_entity: invoice.to_entity,
+        grand_total: new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.grand_total)
+      });
+      return res.status(400).send(html);
+    }
+
+    const assignedNumber = `${prefix}${invoice_number_suffix.trim()}`;
+
     await db.query(
-      'UPDATE invoices SET status = $1, accepted_at = $2 WHERE id = $3',
-      ['accepted', new Date().toISOString(), invoice.id]
+      'UPDATE invoices SET invoice_number = $1, status = $2, accepted_at = $3 WHERE id = $4',
+      [assignedNumber, 'accepted', new Date().toISOString(), invoice.id]
     );
 
     const html = renderTemplate('accepted.html', {
-      invoice_number: invoice.invoice_number,
+      invoice_number: assignedNumber,
       from_entity: invoice.from_entity,
       to_entity: invoice.to_entity,
       grand_total: new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.grand_total)
@@ -87,14 +155,44 @@ router.get('/invoice/reject', async (req, res) => {
   try {
     const invoice = await getValidatedInvoice(token);
 
-    // Update status to rejected and rejected_at to now
+    const html = renderTemplate('confirm_action.html', {
+      action: 'reject',
+      action_capitalized: 'Reject',
+      token,
+      prompt_text: 'Please click below to confirm that you want to',
+      input_block: '',
+      error_block: '',
+      from_entity: invoice.from_entity,
+      to_entity: invoice.to_entity,
+      grand_total: new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.grand_total)
+    });
+
+    return res.status(200).send(html);
+
+  } catch (err) {
+    console.error('Invoice reject process failed (token not logged for security).');
+    return res.status(400).send(`<h1>Verification Failed</h1><p>${err.message}</p>`);
+  }
+});
+
+// POST /invoice/reject?token=
+router.post('/invoice/reject', async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).send('<h1>Bad Request</h1><p>Missing security token.</p>');
+  }
+
+  try {
+    const invoice = await getValidatedInvoice(token);
+
     await db.query(
       'UPDATE invoices SET status = $1, rejected_at = $2 WHERE id = $3',
       ['rejected', new Date().toISOString(), invoice.id]
     );
 
     const html = renderTemplate('rejected.html', {
-      invoice_number: invoice.invoice_number,
+      invoice_number: 'N/A',
       from_entity: invoice.from_entity,
       to_entity: invoice.to_entity,
       grand_total: new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.grand_total)

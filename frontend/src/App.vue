@@ -18,9 +18,14 @@
             Log Out
           </button>
         </div>
+        <div class="ctrl" v-else-if="currentView === 'counter'">
+          <button @click="logoutShopkeeper" class="dashboard-link" style="background:transparent;cursor:pointer;color:#f0d9a8;border-color:#9c4a3c;">
+            Log Out
+          </button>
+        </div>
         <div class="ctrl">
           <label>Store</label>
-          <select v-model="store">
+          <select v-model="store" :disabled="currentView === 'counter'">
             <option>SM1 — Thane</option>
             <option>SM2 — Mulund</option>
             <option>SM Online</option>
@@ -30,13 +35,7 @@
           <label>Date</label>
           <input type="date" v-model="date">
         </div>
-        <div class="ctrl">
-          <label>GST</label>
-          <div class="toggle" id="gstToggle">
-            <button :class="{ on: gstOn }" @click="gstOn = true">On</button>
-            <button :class="{ on: !gstOn }" @click="gstOn = false">Off</button>
-          </div>
-        </div>
+
       </div>
     </header>
 
@@ -77,9 +76,33 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <div v-else-if="currentView === 'counter'" class="wrap">
+      <!-- Shopkeeper Login Modal -->
+      <div v-if="showShopkeeperModal" class="modal-overlay" @click.self="closeShopkeeperModal">
+        <div class="modal-content">
+          <h3>Shopkeeper Login</h3>
+          <p>Select your store and enter password</p>
+          <select v-model="store" style="width:100%; padding:10px; margin-bottom:10px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink); box-sizing:border-box">
+            <option>SM1 — Thane</option>
+            <option>SM2 — Mulund</option>
+            <option>SM Online</option>
+          </select>
+          <input type="password" v-model="shopkeeperPasswordInput" placeholder="Enter Password" @keyup.enter="verifyShopkeeperPassword">
+          <div v-if="shopkeeperError" class="error-text">{{ shopkeeperError }}</div>
+          <div class="modal-actions">
+            <button @click="closeShopkeeperModal" class="btn-cancel">Cancel</button>
+            <button @click="verifyShopkeeperPassword" class="btn-verify">Login</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="currentView === 'counter'">
+      <div class="dash-tabs" style="margin-bottom: 0; padding-top: 15px; padding-left: 20px; background: var(--paper); border-bottom: 1px solid var(--e8dec8); display: flex; gap: 15px;">
+        <button :class="{active: shopkeeperTab === 'counter'}" @click="shopkeeperTab = 'counter'">Billing Counter</button>
+        <button :class="{active: shopkeeperTab === 'history'}" @click="fetchShopkeeperHistory(); shopkeeperTab = 'history'">Bill History</button>
+      </div>
+
+      <div v-if="shopkeeperTab === 'counter'" class="wrap" style="height: calc(100vh - 140px); border-top: none;">
       <!-- LEFT SIDEBAR: Entry & Cart -->
       <section class="entry">
         <div class="entry-head">
@@ -244,6 +267,100 @@
           </div>
         </div>
       </section>
+      </div>
+
+      <div v-if="shopkeeperTab === 'history'" class="dashboard-wrap" style="height: calc(100vh - 140px); overflow-y: auto;">
+        <div class="container">
+          <h2 style="font-family:Georgia,serif; color:var(--ink); margin-bottom:20px;">Store Bill History</h2>
+          
+          <div class="dash-tabs" style="margin-bottom: 20px; padding: 0;">
+            <button :class="{active: shopkeeperHistoryTab === 'open'}" @click="shopkeeperHistoryTab = 'open'">Open Bills</button>
+            <button :class="{active: shopkeeperHistoryTab === 'closed'}" @click="shopkeeperHistoryTab = 'closed'">Closed Bills</button>
+          </div>
+
+          <div v-if="shopkeeperHistoryLoading" style="text-align:center; padding:40px; color:#8a7a60">
+            Loading your store history...
+          </div>
+          <div v-else class="sales-list">
+            <div v-if="(shopkeeperHistoryTab === 'open' ? shopkeeperOpenBills : shopkeeperClosedBills).length === 0" style="background:var(--paper2); border:1px dashed var(--line); border-radius:12px; padding:60px 20px; text-align:center; color:var(--muted)">
+              <div style="font-family:Georgia,serif; font-size:40px; margin-bottom:10px;">۞</div>
+              No {{ shopkeeperHistoryTab }} sales recorded.
+            </div>
+            
+            <div v-for="sale in (shopkeeperHistoryTab === 'open' ? shopkeeperOpenBills : shopkeeperClosedBills)" :key="sale.id" class="sale-card" style="margin-bottom: 15px; border: 1px solid var(--e8dec8); border-radius: 8px; padding: 15px; background: #fff; transition: box-shadow 0.2s;">
+              <!-- Header Summary (Always Visible) -->
+              <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" @click="expandedSaleId = expandedSaleId === sale.id ? null : sale.id">
+                <div>
+                  <h3 style="margin: 0; font-family: Georgia, serif; color: var(--ink); font-size: 16px;">Retail Bill #{{ sale.id }}</h3>
+                  <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">{{ formatDateDash(sale.created_at) }}</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                  <div style="font-weight: 600; font-size: 16px;">{{ formatINR(sale.customer_total) }}</div>
+                  <button class="btn-download" style="padding: 6px 12px; cursor: pointer; border: 1px solid var(--line); background: var(--paper2); border-radius: 4px; font-weight: 600;">
+                    {{ expandedSaleId === sale.id ? 'Hide Details' : 'View Details' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Expanded Details Section -->
+              <div v-if="expandedSaleId === sale.id" style="margin-top: 20px; border-top: 1px dashed var(--d8cbb0); padding-top: 20px; display: grid; grid-template-columns: minmax(280px, 1fr) 2fr; gap: 20px; align-items: start;">
+                <!-- Left Column: Items Checkboxes -->
+                <div>
+                  <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--ink); text-transform: uppercase;">Pack Items</h4>
+                  <div v-if="sale.products && sale.products.length > 0" style="display: flex; flex-direction: column; gap: 8px;">
+                    <label v-for="(prod, i) in sale.products" :key="i" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; padding: 8px; border: 1px solid var(--e8dec8); border-radius: 4px; background: var(--paper2); transition: background 0.2s;">
+                      <input type="checkbox" :checked="(sale.checked_items || []).includes(prod.product_name)" @change="toggleShopkeeperItem(sale.id, prod.product_name)" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--amber);">
+                      <span :style="{ textDecoration: (sale.checked_items || []).includes(prod.product_name) ? 'line-through' : 'none', color: (sale.checked_items || []).includes(prod.product_name) ? 'var(--muted)' : 'var(--ink)' }">
+                        {{ prod.product_name }} <span v-if="prod.weight" style="color:var(--muted); font-size:11px;">({{ prod.weight }})</span>
+                        - <strong :style="{ color: (sale.checked_items || []).includes(prod.product_name) ? 'var(--muted)' : 'var(--ink)' }">{{ prod.qty }} qty</strong>
+                      </span>
+                    </label>
+                  </div>
+                  <div v-else style="font-size: 12px; color: var(--muted); font-style: italic;">No items found.</div>
+                  
+                  <!-- Manual Complete Button -->
+                  <div style="margin-top: 15px;">
+                    <button v-if="sale.status === 'open'" @click="updateSaleStatus(sale.id, 'closed')" style="width: 100%; padding: 10px; background: #3f7a4d; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                      Complete Order & Close Bill
+                    </button>
+                    <button v-else @click="updateSaleStatus(sale.id, 'open')" style="width: 100%; padding: 10px; background: var(--paper2); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+                      Re-open Bill
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Right Column: Supply Chain Timeline -->
+                <div>
+                  <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--ink); text-transform: uppercase;">Linked Chain Invoices Timeline</h4>
+                  <div v-if="sale.invoices && sale.invoices.length > 0">
+                    <table class="stat-table" style="width: 100%; font-size: 13px; margin: 0; background: #fff; border: 1px solid var(--e8dec8); border-radius: 6px; overflow: hidden; border-spacing: 0;">
+                      <thead style="background: #fbf5eb;">
+                        <tr>
+                          <th style="padding: 10px 15px; text-align: left; border-bottom: 1px solid var(--e8dec8);">Chain Route</th>
+                          <th style="padding: 10px 15px; text-align: left; border-bottom: 1px solid var(--e8dec8);">Invoice Ref</th>
+                          <th style="padding: 10px 15px; text-align: left; border-bottom: 1px solid var(--e8dec8);">Action Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="inv in sale.invoices" :key="inv.id">
+                          <td style="font-weight:600; padding: 10px 15px; border-bottom: 1px solid var(--e8dec8);">{{ inv.from_entity }} → {{ inv.to_entity }}</td>
+                          <td style="font-family:monospace; color:var(--muted); padding: 10px 15px; border-bottom: 1px solid var(--e8dec8);">{{ inv.invoice_number }}</td>
+                          <td style="padding: 10px 15px; border-bottom: 1px solid var(--e8dec8);">
+                            <span v-if="inv.status === 'accepted'" style="color:#3f7a4d; font-weight:600;">Accepted</span>
+                            <span v-else-if="inv.status === 'rejected'" style="color:#9c4a3c; font-weight:600;">Rejected</span>
+                            <span v-else style="color:#b7791f; font-weight:600;">Awaiting Action</span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p v-else style="font-size:12px; color:var(--muted); font-style:italic; margin: 0;">No linked invoices generated up the chain for this sale.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     
     <div v-else-if="currentView === 'dashboard'" class="dashboard-wrap">
@@ -253,6 +370,7 @@
           <button :class="{active: dashTab === 'sales'}" @click="dashTab = 'sales'">Sales & Invoices</button>
           <button :class="{active: dashTab === 'stats'}" @click="dashTab = 'stats'">Overview & Stats</button>
           <button :class="{active: dashTab === 'reports'}" @click="dashTab = 'reports'; fetchReports(); fetchChartData(); fetchAcceptanceTrend();">Graphs & Reports</button>
+          <button :class="{active: dashTab === 'products'}" @click="dashTab = 'products'">Products Catalog</button>
         </div>
 
         <div v-if="dashTab === 'stats'" class="stats-section">
@@ -514,6 +632,98 @@
             </div>
           </div>
         </div>
+
+        <div v-if="dashTab === 'products'" class="products-section">
+          <div class="stat-box" style="background:var(--paper2); border:1px solid var(--e8dec8); border-radius:8px; padding:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
+              <h3 style="margin:0; font-family:Georgia,serif; font-size:20px; color:var(--ink);">Product Catalog & Pricing</h3>
+              <input type="text" v-model="adminProductSearch" placeholder="Search products..." style="width:250px; padding:8px 12px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink);">
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="stat-table" style="min-width:800px; width:100%;">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Cat</th>
+                    <th>Wt</th>
+                    <th>Route</th>
+                    <th style="text-align:right">Sell</th>
+                    <th style="text-align:right">SM</th>
+                    <th style="text-align:right">Upper</th>
+                    <th style="text-align:right">SFNF</th>
+                    <th style="text-align:right">PPK</th>
+                    <th style="text-align:right">MRP</th>
+                    <th style="text-align:center">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in filteredAdminProducts" :key="p.id">
+                    <td style="font-weight:600;">{{ p.name }}</td>
+                    <td>{{ p.cat }}</td>
+                    <td>{{ p.wt ? p.wt + 'g' : '-' }}</td>
+                    <td><span class="pill" :class="p.route">{{ p.route }}</span></td>
+                    <td style="text-align:right">{{ p.sell ? formatINR(p.sell) : '-' }}</td>
+                    <td style="text-align:right">{{ p.sm ? formatINR(p.sm) : '-' }}</td>
+                    <td style="text-align:right">{{ p.upper ? formatINR(p.upper) : '-' }}</td>
+                    <td style="text-align:right">{{ p.sfnf ? formatINR(p.sfnf) : '-' }}</td>
+                    <td style="text-align:right">{{ p.ppk ? formatINR(p.ppk) : '-' }}</td>
+                    <td style="text-align:right">{{ p.mrp ? formatINR(p.mrp) : '-' }}</td>
+                    <td style="text-align:center">
+                      <button @click="openEditProductModal(p)" class="btn-download" style="padding:4px 10px; cursor:pointer;">Edit</button>
+                    </td>
+                  </tr>
+                  <tr v-if="filteredAdminProducts.length === 0">
+                    <td colspan="11" style="text-align:center; padding:30px; color:var(--muted);">No products found.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Edit Product Modal -->
+    <div v-if="editingProductData" class="modal-overlay" @click.self="closeEditProductModal">
+      <div class="modal-content" style="max-width:500px; width:90%;">
+        <h3 style="margin-top:0; font-family:Georgia,serif; border-bottom:1px solid var(--e8dec8); padding-bottom:10px;">Edit Product Prices</h3>
+        <div style="font-weight:600; font-size:16px; margin-bottom:4px; color:var(--ink);">{{ editingProductData.name }}</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:20px;">{{ editingProductData.cat }} · {{ editingProductData.wt ? editingProductData.wt + 'g' : '' }} · Route: {{ editingProductData.route }}</div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+          <div>
+            <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Sell Price (₹)</label>
+            <input type="number" step="0.01" v-model="editingProductData.sell" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">SM Price (₹)</label>
+            <input type="number" step="0.01" v-model="editingProductData.sm" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Upper Price (₹)</label>
+            <input type="number" step="0.01" v-model="editingProductData.upper" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">SFNF Price (₹)</label>
+            <input type="number" step="0.01" v-model="editingProductData.sfnf" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Price Per Kg (₹)</label>
+            <input type="number" step="0.01" v-model="editingProductData.ppk" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">MRP (₹)</label>
+            <input type="number" step="0.01" v-model="editingProductData.mrp" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button @click="closeEditProductModal" class="btn-cancel">Cancel</button>
+          <button @click="saveProductEdit" class="btn-verify" :disabled="savingProduct">
+            {{ savingProduct ? 'Saving...' : 'Save Changes' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -522,13 +732,38 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import Chart from 'chart.js/auto';
-import { PRODUCTS } from './products';
+const productsList = ref([]);
 
-// Sort products alphabetically by name
-PRODUCTS.sort((a, b) => a.name.localeCompare(b.name));
+const fetchProducts = async () => {
+  try {
+    const res = await fetch('/api/products');
+    if (res.ok) {
+      productsList.value = await res.json();
+    } else {
+      console.error('Failed to fetch products');
+    }
+  } catch (err) {
+    console.error('Error fetching products:', err);
+  }
+};
 
-// Inject IDs into products list
-PRODUCTS.forEach((p, i) => p.id = i);
+const dbGstRates = ref([]);
+const fetchGstRates = async () => {
+  try {
+    const res = await fetch('/api/gst-rates');
+    if (res.ok) {
+      const data = await res.json();
+      dbGstRates.value = data.rates;
+    }
+  } catch (err) {
+    console.error('Error fetching gst rates:', err);
+  }
+};
+
+const getGstRate = (from, to, defaultRate) => {
+  const rateObj = dbGstRates.value.find(r => r.from_entity === from && r.to_entity === to);
+  return rateObj ? Number(rateObj.gst_rate) : defaultRate;
+};
 
 const COMPANY = {
   SFNF: { name: 'Svar Fragrances & Flavors', short: 'SFNF' },
@@ -538,15 +773,15 @@ const COMPANY = {
   SM: { name: 'Sugandh Mart', short: 'SM' }
 };
 
-const INVOICES = [
+const INVOICES = computed(() => [
   { id: 'client', title: 'Bill → Client', from: 'SM', to: 'client', label: 'Customer Bill' },
-  { id: 'sad_sm', title: 'Sadvik → SM', from: 'SADVIK', to: 'SM', filter: p => p.route === 'SADVIK', rate: 'sm', qty: 'unit', gst: 2.5, hsn: '33074100' },
-  { id: 'ale_sm', title: 'Al Eitr → SM', from: 'ALEITR', to: 'SM', filter: p => p.route === 'ALEITR', rate: 'sm', qty: 'unit', gst: 2.5, hsn: '33030000' },
-  { id: 'sipl_sad', title: 'SIPL → Sadvik', from: 'SIPL', to: 'SADVIK', filter: p => p.route === 'SADVIK', rate: 'upper', qty: 'unit', gst: 2.5, hsn: '33074100' },
-  { id: 'sipl_ale', title: 'SIPL → Al Eitr', from: 'SIPL', to: 'ALEITR', filter: p => p.route === 'ALEITR', rate: 'upper', qty: 'unit', gst: 2.5, hsn: '33030000' },
-  { id: 'sipl_sm', title: 'SIPL → SM (direct)', from: 'SIPL', to: 'SM', filter: p => p.route === 'DIRECT', rate: 'upper', qty: 'unit', gst: 2.5, hsn: '33074100' },
-  { id: 'sfnf_sipl', title: 'SFNF → SIPL', from: 'SFNF', to: 'SIPL', filter: p => !!p.sfnf, rate: 'sfnf', qty: 'kg', gst: 9, hsn: '3302' }
-];
+  { id: 'sad_sm', title: 'Sadvik → SM', from: 'SADVIK', to: 'SM', filter: p => p.route === 'SADVIK', rate: 'sm', qty: 'unit', gst: getGstRate('SADVIK', 'SM', 0), hsn: '33074100' },
+  { id: 'ale_sm', title: 'Al Eitr → SM', from: 'ALEITR', to: 'SM', filter: p => p.route === 'ALEITR', rate: 'sm', qty: 'unit', gst: getGstRate('ALEITR', 'SM', 18), hsn: '33030000' },
+  { id: 'sipl_sad', title: 'SIPL → Sadvik', from: 'SIPL', to: 'SADVIK', filter: p => p.route === 'SADVIK', rate: 'upper', qty: 'unit', gst: getGstRate('SIPL', 'SADVIK', 5), hsn: '33074100' },
+  { id: 'sipl_ale', title: 'SIPL → Al Eitr', from: 'SIPL', to: 'ALEITR', filter: p => p.route === 'ALEITR', rate: 'upper', qty: 'unit', gst: getGstRate('SIPL', 'ALEITR', 18), hsn: '33030000' },
+  { id: 'sipl_sm', title: 'SIPL → SM (direct)', from: 'SIPL', to: 'SM', filter: p => p.route === 'DIRECT', rate: 'upper', qty: 'unit', gst: getGstRate('SIPL', 'SM', 18), hsn: '33074100' },
+  { id: 'sfnf_sipl', title: 'SFNF → SIPL', from: 'SFNF', to: 'SIPL', filter: p => !!p.sfnf, rate: 'sfnf', qty: 'kg', gst: getGstRate('SFNF', 'SIPL', 18), hsn: '3302' }
+]);
 
 // Reactive state variables
 const store = ref('SM1 — Thane');
@@ -564,6 +799,66 @@ const showPasswordModal = ref(false);
 const passwordInput = ref('');
 const passwordError = ref('');
 const dashTab = ref('sales');
+
+const showShopkeeperModal = ref(false);
+const shopkeeperPasswordInput = ref('');
+const shopkeeperError = ref('');
+const loggedShopkeeperStore = ref(null);
+const shopkeeperTab = ref('counter');
+const shopkeeperHistoryData = ref([]);
+const shopkeeperHistoryLoading = ref(false);
+const shopkeeperHistoryTab = ref('open');
+const expandedSaleId = ref(null);
+
+const shopkeeperOpenBills = computed(() => {
+  return shopkeeperHistoryData.value.filter(s => s.status === 'open');
+});
+
+const shopkeeperClosedBills = computed(() => {
+  return shopkeeperHistoryData.value.filter(s => s.status === 'closed');
+});
+
+const toggleShopkeeperItem = async (saleId, productName) => {
+  try {
+    const res = await fetch(`/api/shopkeeper/sales/${saleId}/toggle-item`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_name: productName })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const sale = shopkeeperHistoryData.value.find(s => s.id === saleId);
+      if (sale) {
+        sale.checked_items = data.checked_items;
+        sale.status = data.status;
+      }
+    }
+  } catch (err) {
+    console.error('Error toggling item:', err);
+  }
+};
+
+const updateSaleStatus = async (saleId, status) => {
+  try {
+    const res = await fetch(`/api/shopkeeper/sales/${saleId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const sale = shopkeeperHistoryData.value.find(s => s.id === saleId);
+      if (sale) {
+        sale.status = data.status;
+        if (status === 'closed') {
+          expandedSaleId.value = null; // optionally close the dropdown
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error updating status:', err);
+  }
+};
 
 const dashboardData = ref({ sales: [], metrics: {} });
 const dashboardLoading = ref(false);
@@ -597,8 +892,69 @@ const topProductsSort = ref('revenue');
 const selectedRoute = ref(null);
 let acceptanceChartInstance = null;
 
-const goToShopkeeper = () => {
-  currentView.value = 'counter';
+const adminProductSearch = ref('');
+const editingProductData = ref(null);
+const savingProduct = ref(false);
+
+const filteredAdminProducts = computed(() => {
+  const q = adminProductSearch.value.toLowerCase().trim();
+  if (!q) return productsList.value;
+  return productsList.value.filter(p => p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q) || p.route.toLowerCase().includes(q));
+});
+
+const openEditProductModal = (product) => {
+  editingProductData.value = { ...product };
+};
+
+const closeEditProductModal = () => {
+  editingProductData.value = null;
+};
+
+const saveProductEdit = async () => {
+  if (!editingProductData.value) return;
+  savingProduct.value = true;
+  try {
+    const res = await fetch(`/api/products/${editingProductData.value.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(editingProductData.value)
+    });
+    
+    if (res.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Failed to update product');
+    }
+    
+    // Refresh products list
+    await fetchProducts();
+    closeEditProductModal();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    savingProduct.value = false;
+  }
+};
+
+const goToShopkeeper = async () => {
+  try {
+    const res = await fetch('/api/shopkeeper/me');
+    const data = await res.json();
+    if (data.success) {
+      store.value = data.store;
+      currentView.value = 'counter';
+      return;
+    }
+  } catch (err) {
+    console.error(err);
+  }
+  showShopkeeperModal.value = true;
 };
 
 const handleUnauthorized = () => {
@@ -620,6 +976,12 @@ const closePasswordModal = () => {
   passwordError.value = '';
 };
 
+const closeShopkeeperModal = () => {
+  showShopkeeperModal.value = false;
+  shopkeeperPasswordInput.value = '';
+  shopkeeperError.value = '';
+};
+
 const logout = async () => {
   try {
     await fetch('/api/logout', { method: 'POST' });
@@ -630,6 +992,16 @@ const logout = async () => {
   dashTab.value = 'sales';
   dashboardData.value = { sales: [], metrics: {} };
   statsData.value = null;
+};
+
+const logoutShopkeeper = async () => {
+  try {
+    await fetch('/api/shopkeeper-logout', { method: 'POST' });
+  } catch (err) {
+    console.error('Logout error', err);
+  }
+  currentView.value = 'home';
+  loggedShopkeeperStore.value = null;
 };
 
 const verifyPassword = async () => {
@@ -648,10 +1020,50 @@ const verifyPassword = async () => {
       fetchChartData();
       fetchAcceptanceTrend();
     } else {
-      passwordError.value = 'Invalid Password';
+      passwordError.value = data.error || 'Incorrect password';
     }
   } catch (err) {
-    passwordError.value = 'Error verifying Password';
+    passwordError.value = 'Server error';
+  }
+};
+
+const verifyShopkeeperPassword = async () => {
+  try {
+    const res = await fetch('/api/shopkeeper-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ store: store.value, password: shopkeeperPasswordInput.value })
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeShopkeeperModal();
+      loggedShopkeeperStore.value = data.store;
+      currentView.value = 'counter';
+    } else {
+      shopkeeperError.value = data.error || 'Incorrect password for selected store';
+    }
+  } catch (err) {
+    shopkeeperError.value = 'Server error';
+  }
+};
+
+const fetchShopkeeperHistory = async () => {
+  shopkeeperHistoryLoading.value = true;
+  try {
+    const res = await fetch('/api/shopkeeper/history');
+    if (res.status === 401) {
+      currentView.value = 'home';
+      loggedShopkeeperStore.value = null;
+      return;
+    }
+    const data = await res.json();
+    if (data.success) {
+      shopkeeperHistoryData.value = data.history;
+    }
+  } catch (err) {
+    console.error('Error fetching shopkeeper history', err);
+  } finally {
+    shopkeeperHistoryLoading.value = false;
   }
 };
 
@@ -986,6 +1398,8 @@ const formatDateDash = (dateStr) => {
 
 // Initialize state from localStorage or defaults on mount
 onMounted(() => {
+  fetchProducts();
+  fetchGstRates();
   const savedCart = localStorage.getItem('sugandh_mart_cart');
   if (savedCart) {
     try {
@@ -1066,13 +1480,13 @@ const getCompanyFull = (code) => {
 };
 
 const getProduct = (id) => {
-  return PRODUCTS[id];
+  return productsList.value.find(p => p.id === id) || {};
 };
 
 // Computations
 const matches = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
-  let list = PRODUCTS;
+  let list = productsList.value;
   if (activeFilter.value) {
     list = list.filter(p => p.route === activeFilter.value);
   }
@@ -1085,7 +1499,7 @@ const totalUnits = computed(() => {
 });
 
 const linkedInvoicesCount = computed(() => {
-  return INVOICES.filter(i => i.id !== 'client' && cart.value.some(c => i.filter(getProduct(c.id)))).length;
+  return INVOICES.value.filter(i => i.id !== 'client' && cart.value.some(c => i.filter(getProduct(c.id)))).length;
 });
 
 const fmtDate = computed(() => {
@@ -1158,7 +1572,7 @@ const routeCount = (route) => {
 
 // Active invoice (right pane tabs) details
 const activeInvoiceDef = computed(() => {
-  return INVOICES.find(i => i.id === activeTab.value);
+  return INVOICES.value.find(i => i.id === activeTab.value);
 });
 
 const getActiveInvoiceTitlePrefix = computed(() => {
@@ -1180,11 +1594,11 @@ const activeInvoiceGstRate = computed(() => {
 });
 
 const activeInvoiceCgst = computed(() => {
-  return activeInvoiceSubtotal.value * activeInvoiceGstRate.value / 100;
+  return activeInvoiceSubtotal.value * (activeInvoiceGstRate.value / 2) / 100;
 });
 
 const activeInvoiceSgst = computed(() => {
-  return activeInvoiceSubtotal.value * activeInvoiceGstRate.value / 100;
+  return activeInvoiceSubtotal.value * (activeInvoiceGstRate.value / 2) / 100;
 });
 
 const activeInvoiceGrandTotal = computed(() => {
@@ -1238,15 +1652,14 @@ const sendInvoices = async () => {
   sending.value = true;
   try {
     const invoicesToSend = [];
-    INVOICES.forEach(inv => {
+    INVOICES.value.forEach(inv => {
       if (inv.id === 'client') return;
       const invRows = getLineRows(inv);
       if (invRows.length > 0) {
         const sub = invRows.reduce((s, r) => s + r.total, 0);
         const rate = gstOn.value ? inv.gst : 0;
-        const cg = sub * rate / 100;
-        const sg = sub * rate / 100;
-        const grand = sub + cg + sg;
+        const totalGstAmount = sub * (rate / 100);
+        const grand = sub + totalGstAmount;
         
         if (grand > 0) {
           invoicesToSend.push({
@@ -1254,7 +1667,7 @@ const sendInvoices = async () => {
             to_entity: inv.to,
             invoice_number: getInvoiceNo(inv.id),
             amount: sub,
-            gst: cg + sg,
+            gst: totalGstAmount,
             grand_total: grand,
             hsn: inv.hsn,
             items: invRows
@@ -1345,6 +1758,7 @@ header .spacer{flex:1}
 select,input[type=text],input[type=date]{
   font-family:inherit; font-size:13px; border:1px solid #44372a; background:#241a12;
   color:#fffaf0; padding:7px 10px; border-radius:7px; outline:none;
+  appearance:none; -webkit-appearance:none;
 }
 select:focus,input:focus{border-color:#c8841f}
 .toggle{display:inline-flex;border:1px solid #44372a;border-radius:7px;overflow:hidden}

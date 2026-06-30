@@ -17,6 +17,7 @@ const getEntityEmail = (entity) => {
 
 router.post('/bill', async (req, res) => {
   const { store, date, customer_total, gst_on, invoices } = req.body;
+  console.log('Received /bill payload with invoices count:', invoices ? invoices.length : 0);
 
   if (!store || !date || customer_total === undefined || gst_on === undefined || !Array.isArray(invoices)) {
     return res.status(400).json({ error: 'Invalid payload. Missing store, date, customer_total, gst_on, or invoices array.' });
@@ -37,18 +38,20 @@ router.post('/bill', async (req, res) => {
 
     // 2. Loop through each invoice, insert into the database, and send the email
     for (const inv of invoices) {
-      const { from_entity, to_entity, invoice_number, amount, gst, grand_total } = inv;
+      const { from_entity, to_entity, amount, gst, grand_total } = inv;
       
-      const recipientEmail = getEntityEmail(from_entity);
+      const recipientEmail = getEntityEmail(to_entity);
       if (!recipientEmail) {
-        throw new Error(`Email address not configured for entity: ${from_entity}. Please update your system configurations.`);
+        throw new Error(`Email address not configured for entity: ${to_entity}. Please update your system configurations.`);
       }
+
+      const generatedInvoiceNumber = `PENDING-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
       // Insert invoice record into database to generate the UUID token
       const invoiceResult = await client.query(
         `INSERT INTO invoices (sale_id, from_entity, to_entity, invoice_number, amount, gst, grand_total, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING token, id, from_entity, to_entity, invoice_number, grand_total`,
-        [saleId, from_entity, to_entity, invoice_number, amount, gst, grand_total, 'pending']
+        [saleId, from_entity, to_entity, generatedInvoiceNumber, amount, gst, grand_total, 'pending']
       );
 
       const dbInvoice = invoiceResult.rows[0];
@@ -80,13 +83,13 @@ router.post('/bill', async (req, res) => {
       const acceptUrl = `${process.env.BASE_URL}/invoice/accept?token=${dbInvoice.token}`;
       const rejectUrl = `${process.env.BASE_URL}/invoice/reject?token=${dbInvoice.token}`;
 
-      console.log(`Firing off invoice email for ${invoice_number} to ${from_entity} (${recipientEmail})...`);
+      console.log(`Firing off invoice email for ${generatedInvoiceNumber} to ${to_entity} (${recipientEmail})...`);
       
       try {
         await sendInvoiceEmail(recipientEmail, dbInvoice, acceptUrl, rejectUrl);
       } catch (mailError) {
-        console.error(`Email Error: Failed to send email for invoice ${invoice_number}`, mailError);
-        throw new Error(`Failed to send email for invoice ${invoice_number}: ${mailError.message}`);
+        console.error(`Email Error: Failed to send email for invoice ${generatedInvoiceNumber}`, mailError);
+        throw new Error(`Failed to send email for invoice ${generatedInvoiceNumber}: ${mailError.message}`);
       }
 
       // Update emailed_at timestamp in database on successful email delivery

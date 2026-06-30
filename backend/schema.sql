@@ -58,3 +58,27 @@ CREATE INDEX IF NOT EXISTS idx_reports_type_date ON reports(report_type, report_
 -- Indexes for performance on dashboard analytics
 CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at);
 CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
+
+-- Create products table
+CREATE TABLE IF NOT EXISTS products (
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    wt TEXT,
+    cat TEXT,
+    route TEXT,
+    ppk NUMERIC,
+    sfnf NUMERIC,
+    upper NUMERIC,
+    sm NUMERIC,
+    sell NUMERIC,
+    mrp NUMERIC
+);
+
+-- Create gst_rates table
+CREATE TABLE IF NOT EXISTS gst_rates (
+    id BIGSERIAL PRIMARY KEY,
+    from_entity TEXT NOT NULL,
+    to_entity TEXT NOT NULL,
+    gst_rate NUMERIC NOT NULL,
+    UNIQUE(from_entity, to_entity)
+);
