@@ -280,7 +280,7 @@ router.get('/api/dashboard/stats', requireAuth, async (req, res) => {
 
     // Current month invoices (for deltas)
     const currentMonthInvoicesRes = await db.query(`
-      SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'accepted') as accepted
+      SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE invoices.status = 'accepted') as accepted
       FROM invoices
       JOIN sales ON invoices.sale_id = sales.id
       WHERE date_trunc('month', sales.created_at) = date_trunc('month', CURRENT_DATE)
@@ -288,7 +288,7 @@ router.get('/api/dashboard/stats', requireAuth, async (req, res) => {
     
     // Previous month invoices (for deltas)
     const prevMonthInvoicesRes = await db.query(`
-      SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'accepted') as accepted
+      SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE invoices.status = 'accepted') as accepted
       FROM invoices
       JOIN sales ON invoices.sale_id = sales.id
       WHERE date_trunc('month', sales.created_at) = date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
