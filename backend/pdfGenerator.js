@@ -305,10 +305,19 @@ async function generateInvoicePDF(invoice, store, date) {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
+    const launchOptions = {
       headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    };
+    
+    // Check for system chromium-browser (installed via apt on Ubuntu)
+    if (fs.existsSync('/usr/bin/chromium-browser')) {
+      launchOptions.executablePath = '/usr/bin/chromium-browser';
+    } else if (fs.existsSync('/home/hitanshu/.cache/puppeteer/chrome/chrome-linux64/chrome')) {
+      launchOptions.executablePath = '/home/hitanshu/.cache/puppeteer/chrome/chrome-linux64/chrome';
+    }
+    
+    browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdfBuffer = await page.pdf({

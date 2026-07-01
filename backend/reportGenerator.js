@@ -308,10 +308,19 @@ async function generateReportPDF(reportData) {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
+    const launchOptions = {
       headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    };
+    
+    const fs = require('fs');
+    if (fs.existsSync('/usr/bin/chromium-browser')) {
+      launchOptions.executablePath = '/usr/bin/chromium-browser';
+    } else if (fs.existsSync('/home/hitanshu/.cache/puppeteer/chrome/chrome-linux64/chrome')) {
+      launchOptions.executablePath = '/home/hitanshu/.cache/puppeteer/chrome/chrome-linux64/chrome';
+    }
+    
+    browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     return await page.pdf({
