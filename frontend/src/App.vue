@@ -6,10 +6,15 @@
         <span class="sub">Counter &amp; Ledger</span>
       </div>
       <div class="spacer"></div>
+      <button class="mobile-menu-btn" @click="isMobileMenuOpen = true">☰</button>
       
-      <div class="header-controls">
+      <div v-if="isMobileMenuOpen" class="mobile-menu-overlay" @click="isMobileMenuOpen = false"></div>
+
+      <div class="header-controls" :class="{ 'open': isMobileMenuOpen }">
+        <button class="mobile-menu-close" @click="isMobileMenuOpen = false">✕</button>
+        
         <div class="ctrl">
-          <button @click="currentView = 'home'" class="dashboard-link" style="background:transparent;cursor:pointer;">
+          <button @click="currentView = 'home'; isMobileMenuOpen = false" class="dashboard-link" style="background:transparent;cursor:pointer;">
             Home
           </button>
         </div>
@@ -82,7 +87,7 @@
         <div class="modal-content">
           <h3>Shopkeeper Login</h3>
           <p>Select your store and enter password</p>
-          <select v-model="store" style="width:100%; padding:10px; margin-bottom:10px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink); box-sizing:border-box">
+          <select v-model="store" style="width:100%; padding:10px; margin-bottom:10px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink); box-sizing:border-box; appearance: auto; -webkit-appearance: auto;">
             <option>SM1 — Thane</option>
             <option>SM2 — Mulund</option>
             <option>SM Online</option>
@@ -97,17 +102,18 @@
       </div>
     </div>
     <div v-else-if="currentView === 'counter'">
-      <div class="dash-tabs" style="margin-bottom: 0; padding-top: 15px; padding-left: 20px; background: var(--paper); border-bottom: 1px solid var(--e8dec8); display: flex; gap: 15px;">
-        <button :class="{active: shopkeeperTab === 'counter'}" @click="shopkeeperTab = 'counter'">Billing Counter</button>
-        <button :class="{active: shopkeeperTab === 'history'}" @click="fetchShopkeeperHistory(); shopkeeperTab = 'history'">Bill History</button>
+      <div class="dash-tabs dash-tabs-main">
+        <button :class="{active: shopkeeperTab === 'counter'}" @click="shopkeeperTab = 'counter'">Create PO</button>
+        <button :class="{active: shopkeeperTab === 'history'}" @click="fetchShopkeeperHistory(); shopkeeperTab = 'history'">PO History</button>
       </div>
 
-      <div v-if="shopkeeperTab === 'counter'" class="wrap" style="height: calc(100vh - 140px); border-top: none;">
+      <div v-if="shopkeeperTab === 'counter'" class="wrap counter-wrap">
+
       <!-- LEFT SIDEBAR: Entry & Cart -->
-      <section class="entry">
+      <section class="entry" :class="{ 'mobile-hidden': mobileCounterTab !== 'entry' }">
         <div class="entry-head">
-          <h2>Add what sold</h2>
-          <p>Search a product, set quantity. The ledger builds itself.</p>
+          <h2>Create Purchase Order</h2>
+          <p>Search a product, set quantity. The PO builds itself.</p>
         </div>
         
         <div class="search-box">
@@ -188,26 +194,17 @@
               </div>
             </div>
 
-            <!-- Send Invoices Button -->
-            <button 
-              class="send-btn" 
-              id="sendInvoicesBtn" 
-              :disabled="sending" 
-              @click="sendInvoices"
-            >
-              {{ sending ? 'Sending...' : 'Send Invoices' }}
-            </button>
           </div>
         </div>
       </section>
 
       <!-- RIGHT PANE: Invoices -->
-      <section class="stage">
+      <section class="stage" :class="{ 'mobile-hidden': mobileCounterTab !== 'stage' }">
         <!-- Tabs -->
         <div class="tabs">
           <button class="tab active" :class="{ has: cart.length > 0 }">
             <span class="dot"></span>
-            Customer Bill
+            Purchase Order
             <span v-if="cart.length > 0" class="cnt">{{ cart.length }}</span>
           </button>
         </div>
@@ -217,7 +214,7 @@
           <div class="summary-view">
             <div v-if="cart.length === 0" class="empty-inv">
               <div class="big serif">۞</div>
-              The customer bill appears here once you add items.
+              The purchase order preview appears here once you add items.
             </div>
             
             <div v-else class="summary">
@@ -228,14 +225,14 @@
               </div>
               
               <div style="display:flex; justify-content:flex-end; margin-bottom:14px">
-                <button class="printbtn" @click="printWindow">Print customer bill</button>
+                <button class="printbtn" @click="printWindow">Print purchase order</button>
               </div>
               
               <div class="inv">
                 <div class="inv-band">
                   <div>
                     <div class="from">Sugandh Mart</div>
-                    <div class="arrow">▾ retail bill</div>
+                    <div class="arrow">▾ purchase order</div>
                     <div class="to">Customer</div>
                   </div>
                   <div class="rt">
@@ -268,16 +265,38 @@
                 Supply chain breakdown: {{ routeCount('SADVIK') }} via Sadvik · {{ routeCount('ALEITR') }} via Al Eitr · {{ routeCount('DIRECT') }} direct from SIPL — all billed up the chain automatically.
               </div>
             </div>
+            
+            <!-- Submit PO Button -->
+            <div style="margin-top: 30px; text-align: right;">
+              <button 
+                class="send-btn" 
+                style="width: auto; min-width: 250px; display: inline-block; padding: 14px 24px;"
+                :disabled="sending || cart.length === 0" 
+                @click="sendInvoices"
+              >
+                {{ sending ? 'Submitting...' : 'Submit Purchase Order' }}
+              </button>
+            </div>
+
           </div>
         </div>
       </section>
+      
+      <!-- Mobile Floating Action Button -->
+      <button v-if="mobileCounterTab === 'entry'" class="mobile-fab" @click="mobileCounterTab = 'stage'">
+        View PO <span v-if="cart.length > 0">({{ cart.length }})</span>
+      </button>
+      <button v-else class="mobile-fab mobile-fab-back" @click="mobileCounterTab = 'entry'">
+        ← Back to Catalog
+      </button>
+      
       </div>
 
-      <div v-if="shopkeeperTab === 'history'" class="dashboard-wrap" style="height: calc(100vh - 140px); overflow-y: auto;">
+      <div v-if="shopkeeperTab === 'history'" class="dashboard-wrap history-wrap">
         <div class="container">
           <h2 style="font-family:Georgia,serif; color:var(--ink); margin-bottom:20px;">Store Bill History</h2>
           
-          <div class="dash-tabs" style="margin-bottom: 20px; padding: 0;">
+          <div class="dash-tabs dash-tabs-sub">
             <button :class="{active: shopkeeperHistoryTab === 'open'}" @click="shopkeeperHistoryTab = 'open'">Open Bills</button>
             <button :class="{active: shopkeeperHistoryTab === 'closed'}" @click="shopkeeperHistoryTab = 'closed'">Closed Bills</button>
           </div>
@@ -307,7 +326,7 @@
               </div>
 
               <!-- Expanded Details Section -->
-              <div v-if="expandedSaleId === sale.id" style="margin-top: 20px; border-top: 1px dashed var(--d8cbb0); padding-top: 20px; display: grid; grid-template-columns: minmax(280px, 1fr) 2fr; gap: 20px; align-items: start;">
+              <div v-if="expandedSaleId === sale.id" class="history-details-grid">
                 <!-- Left Column: Items Checkboxes -->
                 <div>
                   <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--ink); text-transform: uppercase;">Pack Items</h4>
@@ -336,7 +355,7 @@
                 <!-- Right Column: Supply Chain Timeline -->
                 <div>
                   <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--ink); text-transform: uppercase;">Linked Chain Invoices Timeline</h4>
-                  <div v-if="sale.invoices && sale.invoices.length > 0">
+                  <div v-if="sale.invoices && sale.invoices.length > 0" class="table-responsive">
                     <table class="stat-table" style="width: 100%; font-size: 13px; margin: 0; background: #fff; border: 1px solid var(--e8dec8); border-radius: 6px; overflow: hidden; border-spacing: 0;">
                       <thead style="background: #fbf5eb;">
                         <tr>
@@ -625,7 +644,8 @@
                 </div>
               </div>
               
-              <table v-if="sale.invoices && sale.invoices.length > 0">
+              <div class="table-responsive" v-if="sale.invoices && sale.invoices.length > 0">
+              <table>
                 <thead>
                   <tr>
                     <th>Route</th>
@@ -652,6 +672,7 @@
                   </tr>
                 </tbody>
               </table>
+              </div>
               <p v-else style="font-size:12px; color:var(--muted); font-style:italic; margin-top:10px;">No linked invoices generated up the chain for this sale.</p>
             </div>
           </div>
@@ -755,6 +776,11 @@
           </button>
         </div>
       </div>
+    </div> <!-- Added missing closing div for modal-overlay -->
+    
+    <!-- Toast Notification -->
+    <div class="toast" :class="{ 'show': showToast }">
+      {{ toastMessage }}
     </div>
   </div>
 </template>
@@ -764,6 +790,9 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import Chart from 'chart.js/auto';
 const productsList = ref([]);
 const productCategories = ref([]);
+const mobileCounterTab = ref('entry'); // 'entry' or 'stage'
+const isMobileMenuOpen = ref(false);
+
 
 const fetchProducts = async () => {
   try {
@@ -833,6 +862,19 @@ const date = ref('');
 const gstOn = ref(true);
 const activeTab = ref('client');
 const cart = ref([]); // Array of { id, qty }
+
+const toastMessage = ref('');
+const showToast = ref(false);
+let toastTimeout = null;
+
+const triggerToast = (msg) => {
+  toastMessage.value = msg;
+  showToast.value = true;
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => {
+    showToast.value = false;
+  }, 2500);
+};
 const searchQuery = ref('');
 const activeFilter = ref(null);
 const activeCategoryFilter = ref('');
@@ -1785,12 +1827,24 @@ const activeInvoiceGrandTotal = computed(() => {
 
 // Cart modifications
 const addItem = (id) => {
+  const p = getProduct(id);
   const ex = cart.value.find(c => c.id === id);
+  let newQty = 1;
   if (ex) {
     ex.qty++;
+    newQty = ex.qty;
   } else {
     cart.value.push({ id, qty: 1 });
   }
+  
+  if (p && p.name) {
+    if (newQty > 1) {
+      triggerToast(`Added ${p.name} (x${newQty}) to PO`);
+    } else {
+      triggerToast(`Added ${p.name} to PO`);
+    }
+  }
+  
   searchQuery.value = '';
   activeRes.value = -1;
 };
@@ -1875,9 +1929,10 @@ const sendInvoices = async () => {
       throw new Error(data.error || 'Failed to submit sale and generate invoices.');
     }
 
-    alert('Invoices sent successfully!');
+    triggerToast('Purchase Order submitted successfully!');
+    cart.value = [];
   } catch (err) {
-    alert('Error sending invoices: ' + err.message);
+    triggerToast('Error: ' + err.message);
   } finally {
     sending.value = false;
   }
@@ -2089,8 +2144,9 @@ tbody tr:last-child td{border-bottom:none}
 .flowline{font-size:11px;color:#8a7a60;text-align:center;margin:16px auto 0;max-width:760px;letter-spacing:.3px}
 
 @media print{
-  header, .entry, .tabs, .printbtn { display:none !important }
+  header, .entry, .tabs, .printbtn, .dash-tabs-main, .mobile-fab, .send-btn { display:none !important }
   .wrap { display:block; height:auto }
+  .stage { display: block !important; }
   .invoice-scroll { padding:0; overflow:visible }
   .inv { box-shadow:none; border:1px solid #999; max-width:100% }
 }
@@ -2233,7 +2289,7 @@ tbody tr:last-child td{border-bottom:none}
 
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(10, 8, 5, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; justify-content: center; align-items: center; z-index: 100; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.modal-content { background: rgba(255, 250, 240, 0.85); padding: 40px 30px; border-radius: 24px; width: 100%; max-width: 380px; text-align: center; border: 1px solid rgba(216, 203, 176, 0.5); box-shadow: 0 20px 50px rgba(0,0,0,0.15), inset 0 0 0 1px rgba(255,255,255,0.5); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); transform: translateY(0); animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.modal-content { background: rgba(255, 250, 240, 0.95); padding: 40px 30px; border-radius: 24px; width: 100%; max-width: 380px; text-align: center; border: 1px solid rgba(216, 203, 176, 0.5); box-shadow: 0 20px 50px rgba(0,0,0,0.15), inset 0 0 0 1px rgba(255,255,255,0.5); animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .modal-content h3 { margin-bottom: 8px; font-family: Georgia, serif; font-size: 26px; color: var(--ink); font-weight: 700; }
 .modal-content p { font-size: 14px; color: var(--muted); margin-bottom: 28px; line-height: 1.5; }
@@ -2242,17 +2298,17 @@ tbody tr:last-child td{border-bottom:none}
 .error-text { color: var(--rose); font-size: 13px; margin-bottom: 16px; font-weight: 600; animation: shake 0.4s; }
 @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
 .modal-actions { display: flex; gap: 12px; margin-top: 20px; }
-.btn-cancel, .btn-verify { flex: 1; padding: 14px; border: none; border-radius: 12px; cursor: pointer; font-weight: 700; font-size: 14px; transition: all 0.2s; }
-.btn-cancel { background: rgba(232, 222, 200, 0.7); color: var(--ink); }
-.btn-cancel:hover { background: rgba(216, 203, 176, 0.9); transform: translateY(-1px); }
-.btn-verify { background: linear-gradient(135deg, var(--amber) 0%, var(--amber-d) 100%); color: #fff; box-shadow: 0 4px 12px rgba(200, 132, 31, 0.3); }
+.btn-cancel, .btn-verify { flex: 1; padding: 14px; border: none; border-radius: 12px; cursor: pointer; font-weight: 700; font-size: 14px; transition: all 0.2s; appearance: none; -webkit-appearance: none; }
+.btn-cancel { background-color: rgba(232, 222, 200, 0.7); color: var(--ink); }
+.btn-cancel:hover { background-color: rgba(216, 203, 176, 0.9); transform: translateY(-1px); }
+.btn-verify { background-color: var(--amber); background-image: linear-gradient(135deg, var(--amber) 0%, var(--amber-d) 100%); color: #fff; box-shadow: 0 4px 12px rgba(200, 132, 31, 0.3); }
 .btn-verify:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(200, 132, 31, 0.4); filter: brightness(1.1); }
 .btn-verify:active { transform: translateY(0); }
 
 .dash-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 .dash-tabs button { background: transparent; border: 1px solid transparent; padding: 8px 16px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; border-radius: 6px; }
 .dash-tabs button:hover { background: #e8dec8; }
-.dash-tabs button.active { background: var(--amber); color: #fff; }
+.dash-tabs button.active { background-color: var(--amber); color: #fff; appearance: none; -webkit-appearance: none; background-image: none; box-shadow: 0 2px 8px rgba(200, 132, 31, 0.3); }
 
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
 .stat-box { background: #fff; border: 1px solid var(--line2); border-radius: 12px; padding: 24px; box-shadow: 0 4px 24px rgba(40,28,12,0.04); }
@@ -2301,5 +2357,208 @@ tbody tr:last-child td{border-bottom:none}
   .report-toolbar{align-items:stretch;flex-direction:column}
   .report-controls{justify-content:flex-start}
   .report-kpis,.report-grid,.report-tables{grid-template-columns:1fr}
+}
+
+/* Responsive layout classes */
+.counter-wrap { height: calc(100vh - 140px); border-top: none; }
+.history-wrap { height: calc(100vh - 140px); overflow-y: auto; }
+.dash-tabs-main { margin-bottom: 0; padding-top: 15px; padding-left: 20px; background: var(--paper); border-bottom: 1px solid var(--e8dec8); }
+.dash-tabs-sub { margin-bottom: 20px; padding: 0; }
+.history-details-grid { margin-top: 20px; border-top: 1px dashed var(--d8cbb0); padding-top: 20px; display: grid; grid-template-columns: minmax(280px, 1fr) 2fr; gap: 20px; align-items: start; }
+.table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.dash-tabs { overflow-x: auto; white-space: nowrap; }
+.dash-tabs::-webkit-scrollbar { display: none; }
+
+.mobile-fab { display: none; }
+.mobile-menu-btn, .mobile-menu-close, .mobile-menu-overlay { display: none; }
+
+@media (max-width: 900px) {
+  .counter-wrap { height: auto; border-top: 1px solid var(--e8dec8); display: flex; flex-direction: column; }
+  .history-wrap { height: auto; }
+  
+  header { 
+    flex-direction: row; 
+    align-items: center; 
+    justify-content: space-between;
+    padding: 12px 16px; 
+    gap: 16px; 
+  }
+  .brand { margin: 0; align-self: center; }
+  
+  .mobile-menu-btn {
+    display: block;
+    background: transparent;
+    border: none;
+    color: #f0d9a8;
+    font-size: 26px;
+    cursor: pointer;
+    padding: 0;
+  }
+  
+  .mobile-menu-overlay {
+    display: block;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(10, 8, 5, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 99;
+  }
+
+  .header-controls { 
+    display: flex;
+    position: fixed;
+    top: 0; right: -300px;
+    width: 260px;
+    height: 100vh;
+    background: #2b2018;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+    flex-direction: column; 
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 70px 24px 24px;
+    gap: 20px;
+    z-index: 100;
+    transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  
+  .header-controls.open {
+    right: 0;
+  }
+  
+  .mobile-menu-close {
+    display: block;
+    position: absolute;
+    top: 16px; right: 16px;
+    background: transparent;
+    border: none;
+    color: var(--amber-l);
+    font-size: 24px;
+    cursor: pointer;
+  }
+
+  .ctrl { 
+    flex: none;
+    width: 100%;
+    flex-direction: column; 
+    align-items: stretch; 
+    gap: 6px; 
+  }
+  .ctrl label {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .ctrl select, .ctrl input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px;
+    font-size: 15px;
+  }
+  .dashboard-link {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    padding: 12px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+  
+  .dash-tabs-main { 
+    margin: 16px; 
+    padding: 4px; 
+    background: rgba(216, 203, 176, 0.4); 
+    border-radius: 12px; 
+    display: flex;
+    border: none;
+  }
+  .dash-tabs-main button { 
+    flex: 1; 
+    padding: 10px; 
+    border-radius: 8px; 
+    text-align: center;
+    color: var(--ink);
+  }
+  
+  .mobile-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    right: 24px;
+    padding: 16px;
+    background-color: #1a1410;
+    color: #f6f0e4;
+    border: none;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    z-index: 90;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .mobile-fab-back {
+    background-color: #fffaf0;
+    color: #1a1410;
+    border: 1px solid #e8dec8;
+  }
+  
+  /* Make sure counter-wrap has padding at bottom for FAB */
+  .counter-wrap { padding-bottom: 80px; }
+  
+  .stats-grid { grid-template-columns: 1fr; }
+  .history-details-grid { grid-template-columns: 1fr; gap: 16px; }
+
+  /* Mobile counter toggle */
+  .mobile-counter-tabs { 
+    display: flex; 
+    width: 100%; 
+    border-bottom: 1px solid var(--e8dec8); 
+    background: var(--paper2); 
+  }
+  .mobile-counter-tabs button {
+    flex: 1;
+    padding: 12px;
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .mobile-counter-tabs button.active {
+    color: var(--ink);
+    border-bottom: 2px solid var(--amber);
+  }
+  .mobile-hidden {
+    display: none !important;
+  }
+}
+
+/* Toast Notification */
+.toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #1a1410;
+  color: #fffaf0;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(40,28,12,0.2);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
 }
 </style>
