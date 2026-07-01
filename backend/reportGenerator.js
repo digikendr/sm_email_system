@@ -1,5 +1,4 @@
-const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer');
 
 const formatINR = (n) => {
   return '₹' + (Math.round(Number(n || 0) * 100) / 100).toLocaleString('en-IN', {
@@ -309,35 +308,10 @@ async function generateReportPDF(reportData) {
 
   let browser;
   try {
-    const isLocal = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' || !process.env.NODE_ENV;
-
-    if (isLocal) {
-      const fs = require('fs');
-      let localExecutablePath = undefined;
-      const localPaths = [
-        '/home/hitanshu/.cache/puppeteer/chrome/chrome-linux64/chrome',
-        '/usr/bin/google-chrome',
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-      ];
-      for (const p of localPaths) {
-        if (fs.existsSync(p)) {
-          localExecutablePath = p;
-          break;
-        }
-      }
-      browser = await puppeteer.launch({
-        headless: 'new',
-        executablePath: localExecutablePath,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-    } else {
-      browser = await puppeteer.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
-      });
-    }
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     return await page.pdf({
