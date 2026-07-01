@@ -310,7 +310,14 @@ async function generateReportPDF(reportData) {
   try {
     const launchOptions = {
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      dumpio: true,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process'
+      ]
     };
     
     const fs = require('fs');

@@ -307,7 +307,14 @@ async function generateInvoicePDF(invoice, store, date) {
   try {
     const launchOptions = {
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      dumpio: true,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process'
+      ]
     };
     
     // Check for system chromium-browser (installed via apt on Ubuntu)
