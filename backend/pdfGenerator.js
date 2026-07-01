@@ -1,4 +1,5 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 const fs = require('fs');
 const path = require('path');
 
@@ -305,14 +306,34 @@ async function generateInvoicePDF(invoice, store, date) {
 
   let browser;
   try {
-    const launchOptions = {
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    };
-    if (fs.existsSync('/home/hitanshu/.cache/puppeteer/chrome/chrome-linux64/chrome')) {
-      launchOptions.executablePath = '/home/hitanshu/.cache/puppeteer/chrome/chrome-linux64/chrome';
+    const isLocal = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' || !process.env.NODE_ENV;
+
+    if (isLocal) {
+      let localExecutablePath = undefined;
+      const localPaths = [
+        '/home/hitanshu/.cache/puppeteer/chrome/chrome-linux64/chrome',
+        '/usr/bin/google-chrome',
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+      ];
+      for (const p of localPaths) {
+        if (fs.existsSync(p)) {
+          localExecutablePath = p;
+          break;
+        }
+      }
+      browser = await puppeteer.launch({
+        headless: 'new',
+        executablePath: localExecutablePath,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+    } else {
+      browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
     }
-    browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdfBuffer = await page.pdf({
