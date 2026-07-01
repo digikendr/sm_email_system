@@ -33,7 +33,7 @@
         </div>
         <div class="ctrl">
           <label>Date</label>
-          <input type="date" v-model="date">
+          <input type="date" v-model="date" disabled>
         </div>
 
       </div>
@@ -130,6 +130,10 @@
               <button class="pill" :class="{ DIRECT: activeFilter === 'DIRECT' }" @click="activeFilter = activeFilter === 'DIRECT' ? null : 'DIRECT'" :style="activeFilter !== 'DIRECT' ? 'cursor:pointer;border:1px solid #d8cbb0;background:transparent;color:#8a7a60' : 'cursor:pointer;border:1px solid transparent'">Direct</button>
             </div>
           </div>
+          <select v-model="activeCategoryFilter" class="category-filter">
+            <option value="">All categories</option>
+            <option v-for="cat in productCategories" :key="cat" :value="cat">{{ cat }}</option>
+          </select>
           <div class="results" :class="{ show: matches.length > 0 }">
             <div 
               v-for="(p, index) in matches" 
@@ -369,7 +373,7 @@
         <div class="dash-tabs">
           <button :class="{active: dashTab === 'sales'}" @click="dashTab = 'sales'">Sales & Invoices</button>
           <button :class="{active: dashTab === 'stats'}" @click="dashTab = 'stats'">Overview & Stats</button>
-          <button :class="{active: dashTab === 'reports'}" @click="dashTab = 'reports'; fetchReports(); fetchChartData(); fetchAcceptanceTrend();">Graphs & Reports</button>
+          <button :class="{active: dashTab === 'reports'}" @click="dashTab = 'reports'; refreshReportsAnalytics();">Graphs & Reports</button>
           <button :class="{active: dashTab === 'products'}" @click="dashTab = 'products'">Products Catalog</button>
         </div>
 
@@ -458,97 +462,117 @@
           </div>
         </div>
 
-        <div v-if="dashTab === 'reports'" class="reports-section" style="display:flex; gap:30px; margin-top:20px; align-items:flex-start; flex-wrap:wrap">
-          
-          <!-- LEFT COLUMN: Generation and Archives -->
-          <div style="flex: 1; min-width:350px; display:flex; flex-direction:column; gap:30px;">
-            <div class="reports-controls" style="background:var(--paper2); border:1px solid var(--e8dec8); padding:20px; border-radius:8px">
-              <h3 style="font-family:Georgia,serif; font-size:18px; color:var(--ink); margin-bottom:15px">Generate Analytics Report</h3>
-              <div style="display:flex; flex-direction:column; gap:15px;">
-                <div>
-                  <label style="display:block; font-size:12px; color:var(--8a7a60); font-weight:600; text-transform:uppercase; margin-bottom:5px">Type</label>
-                  <select v-model="reportType" style="width:100%; padding:10px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink); box-sizing:border-box">
-                    <option value="daily">Daily Report</option>
-                    <option value="weekly">Weekly Report</option>
-                    <option value="monthly">Monthly Report</option>
-                  </select>
+        <div v-if="dashTab === 'reports'" class="reports-section">
+          <div class="report-toolbar">
+            <div>
+              <h3>Business Analytics & Reports</h3>
+              <p>{{ reportAnalytics?.period?.label || 'Select a report period' }}</p>
+            </div>
+            <div class="report-controls">
+              <select v-model="reportType">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              <input v-if="reportType === 'daily'" type="date" v-model="reportDate">
+              <input v-else-if="reportType === 'weekly'" type="week" v-model="reportWeek">
+              <input v-else type="month" v-model="reportMonth">
+              <button @click="refreshReportsAnalytics" :disabled="reportAnalyticsLoading">Refresh</button>
+            </div>
+          </div>
+
+          <div v-if="reportAnalyticsLoading" class="report-loading">Loading report analytics...</div>
+          <div v-else-if="reportAnalyticsError" class="report-loading error-text">{{ reportAnalyticsError }}</div>
+          <template v-else-if="reportAnalytics">
+            <div class="report-kpis">
+              <div class="report-kpi"><span>Customer Sales</span><strong>{{ formatINR(reportAnalytics.kpis.totalCustomerSales) }}</strong><small>{{ reportAnalytics.kpis.salesCount }} bills</small></div>
+              <div class="report-kpi"><span>Invoice Value</span><strong>{{ formatINR(reportAnalytics.kpis.invoiceGrandTotal) }}</strong><small>{{ reportAnalytics.kpis.totalInvoices }} invoices</small></div>
+              <div class="report-kpi"><span>Acceptance</span><strong>{{ reportAnalytics.kpis.acceptanceRate }}%</strong><small>{{ reportAnalytics.kpis.pendingCount }} pending</small></div>
+              <div class="report-kpi"><span>Average Bill</span><strong>{{ formatINR(reportAnalytics.kpis.averageBillValue) }}</strong><small>customer bill value</small></div>
+              <div class="report-kpi"><span>Best Route</span><strong>{{ reportAnalytics.kpis.bestRoute || '-' }}</strong><small>by invoice value</small></div>
+              <div class="report-kpi"><span>Top Category</span><strong>{{ reportAnalytics.kpis.topCategory || '-' }}</strong><small>by revenue</small></div>
+            </div>
+
+            <div class="report-actions">
+              <button @click="generateReport" :disabled="generatingReport">{{ generatingReport ? 'Generating PDF...' : 'Download PDF Report' }}</button>
+              <button @click="exportExcel">Download XLSX Workbook</button>
+              <button @click="exportCSV">Download CSV</button>
+            </div>
+
+            <div class="report-grid">
+              <div class="report-panel wide">
+                <h4>Sales Trend</h4>
+                <div v-if="reportAnalytics.trend.length > 0" class="chart-box wide">
+                  <canvas id="reportSalesTrendChart"></canvas>
                 </div>
-                <div>
-                  <label v-if="reportType === 'daily'" style="display:block; font-size:12px; color:var(--8a7a60); font-weight:600; text-transform:uppercase; margin-bottom:5px">Target Date</label>
-                  <label v-else-if="reportType === 'weekly'" style="display:block; font-size:12px; color:var(--8a7a60); font-weight:600; text-transform:uppercase; margin-bottom:5px">Target Week</label>
-                  <label v-else-if="reportType === 'monthly'" style="display:block; font-size:12px; color:var(--8a7a60); font-weight:600; text-transform:uppercase; margin-bottom:5px">Target Month</label>
-                  
-                  <input v-if="reportType === 'daily'" type="date" v-model="reportDate" style="width:100%; padding:10px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink); box-sizing:border-box">
-                  <input v-else-if="reportType === 'weekly'" type="week" v-model="reportWeek" style="width:100%; padding:10px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink); box-sizing:border-box">
-                  <input v-else-if="reportType === 'monthly'" type="month" v-model="reportMonth" style="width:100%; padding:10px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink); box-sizing:border-box">
+                <div v-else class="report-empty">No sales trend data for this period.</div>
+              </div>
+              <div class="report-panel">
+                <h4>Route Revenue</h4>
+                <div v-if="reportAnalytics.routeBreakdown.length > 0" class="chart-box">
+                  <canvas id="reportRouteChart"></canvas>
                 </div>
-                <div style="display:flex; gap:10px; margin-top:10px;">
-                  <select v-model="exportFormat" style="flex:1; padding:10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); font-weight:500;">
-                    <option value="pdf">PDF Document (.pdf)</option>
-                    <option value="xls">Excel Spreadsheet (.xls)</option>
-                    <option value="csv">CSV File (.csv)</option>
-                  </select>
-                  <button @click="handleExport" :disabled="generatingReport" style="flex:1; padding:11px 0; background:var(--ink); color:var(--f0d9a8); border:none; border-radius:6px; font-weight:600; cursor:pointer; text-align:center;">
-                    {{ generatingReport ? 'Wait...' : 'Download Report' }}
-                  </button>
+                <div v-else class="report-empty">No route data for this period.</div>
+              </div>
+              <div class="report-panel">
+                <h4>Category Revenue</h4>
+                <div v-if="reportAnalytics.categoryBreakdown.length > 0" class="chart-box">
+                  <canvas id="reportCategoryChart"></canvas>
                 </div>
+                <div v-else class="report-empty">No category data for this period.</div>
+              </div>
+              <div class="report-panel">
+                <h4>Store Comparison</h4>
+                <div v-if="reportAnalytics.storeBreakdown.length > 0" class="chart-box">
+                  <canvas id="reportStoreChart"></canvas>
+                </div>
+                <div v-else class="report-empty">No store data for this period.</div>
+              </div>
+              <div class="report-panel">
+                <h4>Invoice Status</h4>
+                <div v-if="reportAnalytics.invoiceStatus.length > 0" class="chart-box">
+                  <canvas id="reportStatusChart"></canvas>
+                </div>
+                <div v-else class="report-empty">No invoice status data for this period.</div>
               </div>
             </div>
 
-            <div>
-              <h3 style="font-family:Georgia,serif; font-size:18px; color:var(--ink); margin-bottom:15px">Report History</h3>
-              <div v-if="reportsLoading" style="color:var(--8a7a60)">Loading reports...</div>
-              <div v-else style="background:#fff; border:1px solid var(--e8dec8); border-radius:8px; overflow:hidden">
-                <table class="stat-table" style="width:100%; margin:0; border:none">
-                  <thead style="background:#fbf5eb">
-                    <tr>
-                      <th style="border:none">Type</th>
-                      <th style="border:none">Date Reference</th>
-                      <th style="text-align:right; border:none">Downloads</th>
+            <div class="report-tables">
+              <div class="report-panel">
+                <h4>Top Products</h4>
+                <table class="stat-table">
+                  <thead><tr><th>Product</th><th>Category</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead>
+                  <tbody>
+                    <tr v-for="p in reportAnalytics.topProducts.slice(0, 10)" :key="p.product_name + p.category">
+                      <td>{{ p.product_name }}</td>
+                      <td>{{ p.category }}</td>
+                      <td style="text-align:right">{{ formatQty(p.total_qty) }}</td>
+                      <td style="text-align:right">{{ formatINR(p.total_revenue) }}</td>
                     </tr>
-                  </thead>
+                    <tr v-if="reportAnalytics.topProducts.length === 0"><td colspan="4" style="text-align:center;color:var(--muted)">No product data.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="report-panel">
+                <h4>Report History</h4>
+                <table class="stat-table">
+                  <thead><tr><th>Type</th><th>Date</th><th style="text-align:right">Downloads</th></tr></thead>
                   <tbody>
                     <tr v-for="r in reportsList" :key="r.id">
-                      <td style="text-transform:capitalize; font-weight:600">{{ r.report_type }}</td>
+                      <td style="text-transform:capitalize">{{ r.report_type }}</td>
                       <td>{{ r.report_date.split('T')[0] }}</td>
                       <td style="text-align:right">
-                        <button @click="downloadArchived('xls', r.report_type, r.report_date.split('T')[0])" style="background:none; border:none; color:#3f7a4d; font-weight:600; cursor:pointer; font-size:12px; margin-right:8px; padding:0;">XLS</button>
-                        <button @click="downloadArchived('csv', r.report_type, r.report_date.split('T')[0])" style="background:none; border:none; color:#2b2018; font-weight:600; cursor:pointer; font-size:12px; margin-right:8px; padding:0;">CSV</button>
-                        <a :href="r.file_path" target="_blank" style="display:inline-block; padding:4px 10px; background:#f4ece0; color:#8a7a60; text-decoration:none; border-radius:4px; font-size:11px; font-weight:600">PDF</a>
+                        <a :href="r.file_path" target="_blank" class="mini-link">PDF</a>
+                        <button @click="downloadArchived('xlsx', r.report_type, r.report_date.split('T')[0])" class="mini-link">XLSX</button>
+                        <button @click="downloadArchived('csv', r.report_type, r.report_date.split('T')[0])" class="mini-link">CSV</button>
                       </td>
                     </tr>
-                    <tr v-if="reportsList.length === 0">
-                      <td colspan="3" style="text-align:center; padding:30px; color:var(--8a7a60)">No archived reports available.</td>
-                    </tr>
+                    <tr v-if="reportsList.length === 0"><td colspan="3" style="text-align:center;color:var(--muted)">No archived reports.</td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
-          </div>
-
-          <!-- RIGHT COLUMN: Graphs -->
-          <div style="flex: 2; min-width:400px; display:flex; flex-direction:column; gap:30px;">
-            <div class="stat-box" style="background:var(--paper2); padding:20px; border:1px solid var(--e8dec8); border-radius:8px">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
-                <h3 style="font-family:Georgia,serif; font-size:18px; color:var(--ink); margin:0">Sales Trend</h3>
-                <div style="display:flex; gap:10px">
-                  <select v-model="chartFilter" @change="fetchChartData" style="padding:6px 10px; border:1px solid var(--d8cbb0); border-radius:4px; background:#fff; color:var(--ink); font-size:12px;">
-                    <option value="7">Last 7 Days</option>
-                    <option value="30">Last 30 Days</option>
-                    <option value="90">Last 90 Days</option>
-                  </select>
-                </div>
-              </div>
-              <canvas id="salesChart" height="200"></canvas>
-            </div>
-            
-            <div class="stat-box" style="background:var(--paper2); padding:20px; border:1px solid var(--e8dec8); border-radius:8px">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
-                <h3 style="font-family:Georgia,serif; font-size:18px; color:var(--ink); margin:0">Acceptance Rate Trend</h3>
-              </div>
-              <canvas id="acceptanceChart" height="200"></canvas>
-            </div>
-          </div>
+          </template>
         </div>
 
         <div v-if="dashTab === 'sales'">
@@ -637,7 +661,13 @@
           <div class="stat-box" style="background:var(--paper2); border:1px solid var(--e8dec8); border-radius:8px; padding:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
               <h3 style="margin:0; font-family:Georgia,serif; font-size:20px; color:var(--ink);">Product Catalog & Pricing</h3>
-              <input type="text" v-model="adminProductSearch" placeholder="Search products..." style="width:250px; padding:8px 12px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink);">
+              <div style="display:flex; gap:10px; align-items:center;">
+                <select v-model="adminCategoryFilter" style="width:220px; padding:8px 12px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink);">
+                  <option value="">All categories</option>
+                  <option v-for="cat in productCategories" :key="cat" :value="cat">{{ cat }}</option>
+                </select>
+                <input type="text" v-model="adminProductSearch" placeholder="Search products..." style="width:250px; padding:8px 12px; border:1px solid var(--d8cbb0); border-radius:6px; background:#fff; color:var(--ink);">
+              </div>
             </div>
             <div style="overflow-x:auto;">
               <table class="stat-table" style="min-width:800px; width:100%;">
@@ -733,6 +763,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import Chart from 'chart.js/auto';
 const productsList = ref([]);
+const productCategories = ref([]);
 
 const fetchProducts = async () => {
   try {
@@ -744,6 +775,19 @@ const fetchProducts = async () => {
     }
   } catch (err) {
     console.error('Error fetching products:', err);
+  }
+};
+
+const fetchProductCategories = async () => {
+  try {
+    const res = await fetch('/api/product-categories');
+    if (res.ok) {
+      productCategories.value = await res.json();
+    } else {
+      console.error('Failed to fetch product categories');
+    }
+  } catch (err) {
+    console.error('Error fetching product categories:', err);
   }
 };
 
@@ -791,6 +835,7 @@ const activeTab = ref('client');
 const cart = ref([]); // Array of { id, qty }
 const searchQuery = ref('');
 const activeFilter = ref(null);
+const activeCategoryFilter = ref('');
 const activeRes = ref(-1);
 const sending = ref(false);
 
@@ -866,9 +911,17 @@ const dashboardError = ref(null);
 
 const reportsList = ref([]);
 const reportsLoading = ref(false);
-const reportType = ref('daily');
-const reportDate = ref(new Date().toISOString().split('T')[0]);
-const reportMonth = ref(new Date().toISOString().slice(0, 7));
+const reportAnalytics = ref(null);
+const reportAnalyticsLoading = ref(false);
+const reportAnalyticsError = ref(null);
+const reportType = ref('monthly');
+const now = new Date();
+const localYear = now.getFullYear();
+const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+const localDay = String(now.getDate()).padStart(2, '0');
+
+const reportDate = ref(`${localYear}-${localMonth}-${localDay}`);
+const reportMonth = ref(`${localYear}-${localMonth}`);
 
 const getWeekNumber = (d) => {
   d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -876,14 +929,18 @@ const getWeekNumber = (d) => {
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
   return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
 };
-const now = new Date();
-const currentWeek = `${now.getFullYear()}-W${getWeekNumber(now).toString().padStart(2, '0')}`;
+const currentWeek = `${localYear}-W${getWeekNumber(now).toString().padStart(2, '0')}`;
 const reportWeek = ref(currentWeek);
 const exportFormat = ref('pdf');
 
 const generatingReport = ref(false);
 const chartFilter = ref('30');
 let chartInstance = null;
+let reportSalesTrendChart = null;
+let reportRouteChart = null;
+let reportCategoryChart = null;
+let reportStoreChart = null;
+let reportStatusChart = null;
 
 const statsData = ref(null);
 const statsLoading = ref(false);
@@ -893,13 +950,17 @@ const selectedRoute = ref(null);
 let acceptanceChartInstance = null;
 
 const adminProductSearch = ref('');
+const adminCategoryFilter = ref('');
 const editingProductData = ref(null);
 const savingProduct = ref(false);
 
 const filteredAdminProducts = computed(() => {
   const q = adminProductSearch.value.toLowerCase().trim();
-  if (!q) return productsList.value;
-  return productsList.value.filter(p => p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q) || p.route.toLowerCase().includes(q));
+  return productsList.value.filter(p => {
+    const categoryMatches = !adminCategoryFilter.value || p.cat === adminCategoryFilter.value;
+    const searchMatches = !q || p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q) || p.route.toLowerCase().includes(q);
+    return categoryMatches && searchMatches;
+  });
 });
 
 const openEditProductModal = (product) => {
@@ -1122,6 +1183,28 @@ const fetchReports = async () => {
   }
 };
 
+const refreshReportsAnalytics = async () => {
+  reportAnalyticsLoading.value = true;
+  reportAnalyticsError.value = null;
+  try {
+    const dateToSend = getReportDateForBackend();
+    if (!dateToSend) return;
+    const res = await fetch(`/api/reports/analytics?type=${reportType.value}&date=${dateToSend}`);
+    if (res.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    if (!res.ok) throw new Error('Failed to fetch report analytics');
+    reportAnalytics.value = await res.json();
+    await fetchReports();
+    reportAnalyticsLoading.value = false;
+    renderReportCharts();
+  } catch (err) {
+    reportAnalyticsError.value = err.message;
+    reportAnalyticsLoading.value = false;
+  }
+};
+
 const fetchChartData = async () => {
   try {
     const res = await fetch(`/api/dashboard/chart-data?days=${chartFilter.value}`);
@@ -1132,6 +1215,97 @@ const fetchChartData = async () => {
   } catch (e) {
     console.error(e);
   }
+};
+
+const makeChart = (chartRef, canvasId, config) => {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return null;
+  if (chartRef) chartRef.destroy();
+  const existingChart = Chart.getChart(ctx);
+  if (existingChart) existingChart.destroy();
+  return new Chart(ctx, config);
+};
+
+const destroyReportCharts = () => {
+  [reportSalesTrendChart, reportRouteChart, reportCategoryChart, reportStoreChart, reportStatusChart].forEach(chart => {
+    if (chart) chart.destroy();
+  });
+  reportSalesTrendChart = null;
+  reportRouteChart = null;
+  reportCategoryChart = null;
+  reportStoreChart = null;
+  reportStatusChart = null;
+};
+
+const renderReportCharts = () => {
+  nextTick(() => {
+    if (!reportAnalytics.value) return;
+    destroyReportCharts();
+    const data = reportAnalytics.value;
+    const palette = ['#9a5f12', '#3f7a4d', '#8a3a2c', '#46591f', '#7a6843', '#c8841f'];
+
+    reportSalesTrendChart = makeChart(reportSalesTrendChart, 'reportSalesTrendChart', {
+      type: 'line',
+      data: {
+        labels: data.trend.map(row => String(row.date).slice(0, 10)),
+        datasets: [
+          {
+            label: 'Customer Sales',
+            data: data.trend.map(row => Number(row.customer_sales || 0)),
+            borderColor: '#9a5f12',
+            backgroundColor: 'rgba(154,95,18,.12)',
+            fill: true,
+            tension: .3
+          },
+          {
+            label: 'Invoice Value',
+            data: data.trend.map(row => Number(row.invoice_value || 0)),
+            borderColor: '#3f7a4d',
+            backgroundColor: 'rgba(63,122,77,.08)',
+            fill: true,
+            tension: .3
+          }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    reportRouteChart = makeChart(reportRouteChart, 'reportRouteChart', {
+      type: 'bar',
+      data: {
+        labels: data.routeBreakdown.map(row => row.from_entity),
+        datasets: [{ label: 'Revenue', data: data.routeBreakdown.map(row => Number(row.total_amount || 0)), backgroundColor: palette }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    reportCategoryChart = makeChart(reportCategoryChart, 'reportCategoryChart', {
+      type: 'bar',
+      data: {
+        labels: data.categoryBreakdown.slice(0, 8).map(row => row.category),
+        datasets: [{ label: 'Revenue', data: data.categoryBreakdown.slice(0, 8).map(row => Number(row.total_revenue || 0)), backgroundColor: '#8a3a2c' }]
+      },
+      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+    });
+
+    reportStoreChart = makeChart(reportStoreChart, 'reportStoreChart', {
+      type: 'bar',
+      data: {
+        labels: data.storeBreakdown.map(row => row.store),
+        datasets: [{ label: 'Customer Sales', data: data.storeBreakdown.map(row => Number(row.customer_sales || 0)), backgroundColor: '#46591f' }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    reportStatusChart = makeChart(reportStatusChart, 'reportStatusChart', {
+      type: 'doughnut',
+      data: {
+        labels: data.invoiceStatus.map(row => row.status),
+        datasets: [{ data: data.invoiceStatus.map(row => Number(row.count || 0)), backgroundColor: ['#3f7a4d', '#b7791f', '#9c4a3c'] }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+    });
+  });
 };
 
 const fetchAcceptanceTrend = async () => {
@@ -1241,7 +1415,10 @@ const getDateOfWeek = (year, week) => {
   const days = (week - 1) * 7;
   const dayOffset = (d.getDay() <= 4 ? 1 : 8) - d.getDay();
   d.setDate(d.getDate() + days + dayOffset);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 };
 
 const getReportDateForBackend = () => {
@@ -1284,7 +1461,7 @@ const handleExport = () => {
     generateReport();
   } else if (exportFormat.value === 'csv') {
     exportCSV();
-  } else if (exportFormat.value === 'xls') {
+  } else if (exportFormat.value === 'xls' || exportFormat.value === 'xlsx') {
     exportExcel();
   }
 };
@@ -1303,7 +1480,7 @@ const exportExcel = async () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `report_${reportType.value}_${dateToSend}.xls`;
+    a.download = `sugandh_mart_${reportType.value}_report_${dateToSend}.xlsx`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -1316,7 +1493,7 @@ const exportExcel = async () => {
 
 const downloadArchived = async (format, type, date) => {
   try {
-    const res = await fetch(`/api/reports/export-${format === 'xls' ? 'excel' : 'csv'}?type=${type}&date=${date}`);
+    const res = await fetch(`/api/reports/export-${format === 'xls' || format === 'xlsx' ? 'excel' : 'csv'}?type=${type}&date=${date}`);
     if (!res.ok) {
       const errorData = await res.text();
       throw new Error(errorData);
@@ -1325,7 +1502,7 @@ const downloadArchived = async (format, type, date) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `report_${type}_${date}.${format}`;
+    a.download = `sugandh_mart_${type}_report_${date}.${format === 'xls' ? 'xlsx' : format}`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -1350,7 +1527,7 @@ const exportCSV = async () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `report_${reportType.value}_${dateToSend}.csv`;
+    a.download = `sugandh_mart_${reportType.value}_report_${dateToSend}.csv`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -1399,6 +1576,7 @@ const formatDateDash = (dateStr) => {
 // Initialize state from localStorage or defaults on mount
 onMounted(() => {
   fetchProducts();
+  fetchProductCategories();
   fetchGstRates();
   const savedCart = localStorage.getItem('sugandh_mart_cart');
   if (savedCart) {
@@ -1415,16 +1593,11 @@ onMounted(() => {
   const savedGstOn = localStorage.getItem('sugandh_mart_gstOn');
   if (savedGstOn !== null) gstOn.value = JSON.parse(savedGstOn);
 
-  const savedDate = localStorage.getItem('sugandh_mart_date');
-  if (savedDate) {
-    date.value = savedDate;
-  } else {
-    const d = new Date();
-    const month = '' + (d.getMonth() + 1);
-    const day = '' + d.getDate();
-    const year = d.getFullYear();
-    date.value = [year, month.padStart(2, '0'), day.padStart(2, '0')].join('-');
-  }
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const year = d.getFullYear();
+  date.value = `${year}-${month}-${day}`;
   
   const savedView = localStorage.getItem('sugandh_mart_currentView');
   if (savedView) {
@@ -1449,12 +1622,14 @@ watch(store, (newStore) => {
   localStorage.setItem('sugandh_mart_store', newStore);
 });
 
-watch(date, (newDate) => {
-  localStorage.setItem('sugandh_mart_date', newDate);
-});
+
 
 watch(gstOn, (newGst) => {
   localStorage.setItem('sugandh_mart_gstOn', JSON.stringify(newGst));
+});
+
+watch([searchQuery, activeFilter, activeCategoryFilter], () => {
+  activeRes.value = -1;
 });
 
 // Helper formats
@@ -1489,6 +1664,9 @@ const matches = computed(() => {
   let list = productsList.value;
   if (activeFilter.value) {
     list = list.filter(p => p.route === activeFilter.value);
+  }
+  if (activeCategoryFilter.value) {
+    list = list.filter(p => p.cat === activeCategoryFilter.value);
   }
   if (!q) return list;
   return list.filter(p => p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q));
@@ -1783,6 +1961,16 @@ select:focus,input:focus{border-color:#c8841f}
   padding:11px 12px 11px 34px;font-size:14px;border-radius:9px
 }
 .search-box .ico{position:absolute;left:30px;top:11px;color:#9a5f12;font-size:15px}
+.category-filter{
+  width:100%;
+  margin-top:10px;
+  padding:8px 10px;
+  border:1px solid #d8cbb0;
+  border-radius:6px;
+  background:#fff;
+  color:#1a1410;
+  font-size:12px;
+}
 .results{margin-top:10px;background:#fff;border:1px solid #d8cbb0;
   border-radius:10px;max-height:280px;overflow:auto;display:none}
 .results.show{display:block}
@@ -2081,4 +2269,37 @@ tbody tr:last-child td{border-bottom:none}
 .toggle-sm { display:inline-flex; border:1px solid #d8cbb0; border-radius:4px; overflow:hidden; background:#fff; }
 .toggle-sm button { background:#fff; color:#8a7a60; border:none; padding:4px 10px; font-size:11px; cursor:pointer; font-weight:700; text-transform:uppercase; transition:all 0.2s; outline:none; }
 .toggle-sm button.on { background:#c8841f; color:#fff; }
+
+.reports-section{display:flex;flex-direction:column;gap:18px;margin-top:20px}
+.report-toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;background:#fffaf0;border:1px solid var(--e8dec8);border-radius:8px;padding:18px 20px}
+.report-toolbar h3{font-family:Georgia,serif;font-size:22px;color:var(--ink);margin:0}
+.report-toolbar p{font-size:12px;color:var(--muted);margin-top:4px}
+.report-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.report-controls select,.report-controls input{padding:9px 10px;border:1px solid var(--d8cbb0);border-radius:6px;background:#fff;color:var(--ink)}
+.report-controls button,.report-actions button{padding:10px 14px;border:1px solid var(--ink);border-radius:6px;background:var(--ink);color:var(--f0d9a8);font-weight:700;cursor:pointer}
+.report-loading{padding:38px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--line);border-radius:8px}
+.report-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.report-kpi{background:#fff;border:1px solid var(--e8dec8);border-radius:8px;padding:14px;min-height:92px}
+.report-kpi span{display:block;font-size:10px;letter-spacing:.8px;text-transform:uppercase;font-weight:800;color:var(--muted);margin-bottom:7px}
+.report-kpi strong{display:block;font-size:19px;color:var(--ink);line-height:1.15}
+.report-kpi small{display:block;color:var(--muted);margin-top:6px;font-size:11px}
+.report-actions{display:flex;gap:10px;flex-wrap:wrap}
+.report-actions button:nth-child(2){background:#3f7a4d;border-color:#3f7a4d;color:#fff}
+.report-actions button:nth-child(3){background:#fff;color:var(--ink);border-color:var(--line)}
+.report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.report-panel{background:#fff;border:1px solid var(--e8dec8);border-radius:8px;padding:16px;min-width:0}
+.report-panel.wide{grid-column:1 / -1}
+.report-panel h4{font-family:Georgia,serif;font-size:16px;color:var(--ink);margin:0 0 12px}
+.chart-box{position:relative;height:260px;width:100%}
+.chart-box.wide{height:300px}
+.chart-box canvas{display:block;width:100% !important;height:100% !important}
+.report-empty{height:220px;display:flex;align-items:center;justify-content:center;color:var(--muted);border:1px dashed var(--line);border-radius:6px;background:#fffaf0;font-size:13px}
+.report-tables{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start}
+.mini-link{display:inline-block;background:none;border:none;color:#3f7a4d;font-weight:800;font-size:11px;text-decoration:none;cursor:pointer;margin-left:8px;padding:0}
+
+@media (max-width: 900px){
+  .report-toolbar{align-items:stretch;flex-direction:column}
+  .report-controls{justify-content:flex-start}
+  .report-kpis,.report-grid,.report-tables{grid-template-columns:1fr}
+}
 </style>

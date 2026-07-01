@@ -6,6 +6,8 @@ const { requireAuth } = require('../middleware/auth');
 const fs = require('fs');
 const path = require('path');
 const { generateReportPDF } = require('../reportGenerator');
+const { getReportAnalytics } = require('../reportAnalytics');
+const ExcelJS = require('exceljs');
 
 
 // Helper to format currency
@@ -396,6 +398,167 @@ router.get('/api/dashboard/acceptance-trend', requireAuth, async (req, res) => {
   }
 });
 
+const reportFilename = (type, date, ext) => `sugandh_mart_${type}_report_${date}.${ext}`;
+
+const csvValue = (value) => {
+  const str = String(value ?? '');
+  return `"${str.replace(/"/g, '""')}"`;
+};
+
+const buildReportCSV = (analytics) => {
+  const { period, kpis, trend, routeBreakdown, categoryBreakdown, storeBreakdown, topProducts, invoiceStatus } = analytics;
+  const lines = [];
+
+  lines.push('Sugandh Mart Business Report');
+  lines.push(`Period,${csvValue(period.label)}`);
+  lines.push('');
+  lines.push('Summary');
+  [
+    ['Customer Sales', kpis.totalCustomerSales],
+    ['Average Bill Value', kpis.averageBillValue],
+    ['Retail Bills', kpis.salesCount],
+    ['Invoice Grand Total', kpis.invoiceGrandTotal],
+    ['Invoice GST', kpis.invoiceGst],
+    ['Total Invoices', kpis.totalInvoices],
+    ['Accepted Invoices', kpis.acceptedCount],
+    ['Pending Invoices', kpis.pendingCount],
+    ['Rejected Invoices', kpis.rejectedCount],
+    ['Acceptance Rate %', kpis.acceptanceRate],
+    ['Top Product', kpis.topProduct || ''],
+    ['Top Category', kpis.topCategory || ''],
+    ['Best Route', kpis.bestRoute || '']
+  ].forEach(row => lines.push(row.map(csvValue).join(',')));
+
+  lines.push('');
+  lines.push('Sales Trend');
+  lines.push('Date,Customer Sales,Invoice Value,Bills');
+  trend.forEach(row => lines.push([row.date, row.customer_sales, row.invoice_value, row.bills].map(csvValue).join(',')));
+
+  lines.push('');
+  lines.push('Route Breakdown');
+  lines.push('Route,Invoices,Total Amount');
+  routeBreakdown.forEach(row => lines.push([row.route_label, row.invoice_count, row.total_amount].map(csvValue).join(',')));
+
+  lines.push('');
+  lines.push('Category Breakdown');
+  lines.push('Category,Total Qty,Total Revenue');
+  categoryBreakdown.forEach(row => lines.push([row.category, row.total_qty, row.total_revenue].map(csvValue).join(',')));
+
+  lines.push('');
+  lines.push('Store Breakdown');
+  lines.push('Store,Bills,Customer Sales,Invoice Value');
+  storeBreakdown.forEach(row => lines.push([row.store, row.sales_count, row.customer_sales, row.invoice_value].map(csvValue).join(',')));
+
+  lines.push('');
+  lines.push('Top Products');
+  lines.push('Product,Category,Total Qty,Total Revenue');
+  topProducts.forEach(row => lines.push([row.product_name, row.category, row.total_qty, row.total_revenue].map(csvValue).join(',')));
+
+  lines.push('');
+  lines.push('Invoice Status');
+  lines.push('Status,Invoices,Total Amount');
+  invoiceStatus.forEach(row => lines.push([row.status, row.count, row.total_amount].map(csvValue).join(',')));
+
+  return lines.join('\n');
+};
+
+const addWorksheet = (workbook, name, columns, rows) => {
+  const sheet = workbook.addWorksheet(name);
+  sheet.columns = columns.map(col => ({ header: col.header, key: col.key, width: col.width || 18 }));
+  sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF211A14' } };
+  rows.forEach(row => sheet.addRow(row));
+  sheet.eachRow(row => {
+    row.eachCell(cell => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE8DEC8' } },
+        left: { style: 'thin', color: { argb: 'FFE8DEC8' } },
+        bottom: { style: 'thin', color: { argb: 'FFE8DEC8' } },
+        right: { style: 'thin', color: { argb: 'FFE8DEC8' } }
+      };
+      cell.alignment = { vertical: 'middle' };
+    });
+  });
+  return sheet;
+};
+
+const buildReportWorkbook = (analytics) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Sugandh Mart Central Ledger';
+  workbook.created = new Date();
+  const { period, kpis, trend, routeBreakdown, categoryBreakdown, storeBreakdown, topProducts, invoiceStatus, recentSales } = analytics;
+
+  addWorksheet(workbook, 'Summary', [
+    { header: 'Metric', key: 'metric', width: 28 },
+    { header: 'Value', key: 'value', width: 28 }
+  ], [
+    { metric: 'Report Period', value: period.label },
+    { metric: 'Customer Sales', value: kpis.totalCustomerSales },
+    { metric: 'Average Bill Value', value: kpis.averageBillValue },
+    { metric: 'Retail Bills', value: kpis.salesCount },
+    { metric: 'Invoice Grand Total', value: kpis.invoiceGrandTotal },
+    { metric: 'Invoice GST', value: kpis.invoiceGst },
+    { metric: 'Total Invoices', value: kpis.totalInvoices },
+    { metric: 'Accepted Invoices', value: kpis.acceptedCount },
+    { metric: 'Pending Invoices', value: kpis.pendingCount },
+    { metric: 'Rejected Invoices', value: kpis.rejectedCount },
+    { metric: 'Acceptance Rate %', value: kpis.acceptanceRate },
+    { metric: 'Top Product', value: kpis.topProduct || '-' },
+    { metric: 'Top Category', value: kpis.topCategory || '-' },
+    { metric: 'Best Route', value: kpis.bestRoute || '-' }
+  ]);
+
+  addWorksheet(workbook, 'Sales Trend', [
+    { header: 'Date', key: 'date', width: 16 },
+    { header: 'Customer Sales', key: 'customer_sales', width: 18 },
+    { header: 'Invoice Value', key: 'invoice_value', width: 18 },
+    { header: 'Bills', key: 'bills', width: 12 }
+  ], trend.map(row => ({ ...row, date: String(row.date).slice(0, 10) })));
+
+  addWorksheet(workbook, 'Route Breakdown', [
+    { header: 'Route', key: 'route_label', width: 34 },
+    { header: 'Invoices', key: 'invoice_count', width: 12 },
+    { header: 'Total Amount', key: 'total_amount', width: 18 }
+  ], routeBreakdown);
+
+  addWorksheet(workbook, 'Category Breakdown', [
+    { header: 'Category', key: 'category', width: 36 },
+    { header: 'Total Qty', key: 'total_qty', width: 14 },
+    { header: 'Total Revenue', key: 'total_revenue', width: 18 }
+  ], categoryBreakdown);
+
+  addWorksheet(workbook, 'Store Breakdown', [
+    { header: 'Store', key: 'store', width: 22 },
+    { header: 'Bills', key: 'sales_count', width: 12 },
+    { header: 'Customer Sales', key: 'customer_sales', width: 18 },
+    { header: 'Invoice Value', key: 'invoice_value', width: 18 }
+  ], storeBreakdown);
+
+  addWorksheet(workbook, 'Top Products', [
+    { header: 'Product', key: 'product_name', width: 34 },
+    { header: 'Category', key: 'category', width: 34 },
+    { header: 'Total Qty', key: 'total_qty', width: 14 },
+    { header: 'Total Revenue', key: 'total_revenue', width: 18 }
+  ], topProducts);
+
+  addWorksheet(workbook, 'Invoice Status', [
+    { header: 'Status', key: 'status', width: 16 },
+    { header: 'Invoices', key: 'count', width: 12 },
+    { header: 'Total Amount', key: 'total_amount', width: 18 }
+  ], invoiceStatus);
+
+  addWorksheet(workbook, 'Recent Sales', [
+    { header: 'Sale ID', key: 'id', width: 12 },
+    { header: 'Store', key: 'store', width: 22 },
+    { header: 'Created At', key: 'created_at', width: 24 },
+    { header: 'Customer Total', key: 'customer_total', width: 18 },
+    { header: 'Invoices', key: 'invoice_count', width: 12 },
+    { header: 'Invoice Value', key: 'invoice_value', width: 18 }
+  ], recentSales.map(row => ({ ...row, created_at: row.created_at ? new Date(row.created_at).toLocaleString('en-IN') : '' })));
+
+  return workbook;
+};
+
 router.get('/api/reports', requireAuth, async (req, res) => {
   try {
     const result = await db.query(`SELECT * FROM reports ORDER BY created_at DESC`);
@@ -405,84 +568,32 @@ router.get('/api/reports', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/api/reports/analytics', requireAuth, async (req, res) => {
+  try {
+    const { type = 'monthly', date } = req.query;
+    if (!date) return res.status(400).json({ error: 'Missing date' });
+    const analytics = await getReportAnalytics(db, type, date);
+    res.json(analytics);
+  } catch (err) {
+    console.error('Report analytics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/api/reports/generate', requireAuth, async (req, res) => {
   try {
     const { type, date } = req.body;
     if (!['daily', 'weekly', 'monthly'].includes(type)) return res.status(400).json({error: 'Invalid type'});
-    
-    const existing = await db.query(`SELECT * FROM reports WHERE report_type = $1 AND report_date = $2`, [type, date]);
-    if (existing.rows.length > 0) {
-      return res.json({ success: true, report: existing.rows[0] });
-    }
 
-    let dateCondition = '';
-    let displayDate = '';
-    const targetDate = new Date(date);
-    
-    if (type === 'daily') {
-      dateCondition = `date(created_at) = $1`;
-      displayDate = targetDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    } else if (type === 'monthly') {
-      dateCondition = `date_trunc('month', created_at) = date_trunc('month', $1::date)`;
-      displayDate = targetDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-    } else if (type === 'weekly') {
-      dateCondition = `date_trunc('week', created_at) = date_trunc('week', $1::date)`;
-      displayDate = `Week of ` + targetDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    }
-
-    const totalSalesRes = await db.query(`SELECT SUM(customer_total) as total FROM sales WHERE ${dateCondition}`, [date]);
-    
-    const totalInvoicesRes = await db.query(`
-      SELECT COUNT(*) as total FROM invoices 
-      JOIN sales ON sales.id = invoices.sale_id 
-      WHERE ${dateCondition.replace('created_at', 'sales.created_at')}
-    `, [date]);
-    
-    const acceptedInvoicesRes = await db.query(`
-      SELECT COUNT(*) as total FROM invoices 
-      JOIN sales ON sales.id = invoices.sale_id 
-      WHERE invoices.status = 'accepted' AND ${dateCondition.replace('created_at', 'sales.created_at')}
-    `, [date]);
-
-    const totalInv = parseInt(totalInvoicesRes.rows[0].total) || 0;
-    const acceptedInv = parseInt(acceptedInvoicesRes.rows[0].total) || 0;
-    const acceptanceRate = totalInv > 0 ? ((acceptedInv / totalInv) * 100).toFixed(1) : 0;
-
-    const routeBreakdownRes = await db.query(`
-      SELECT invoices.from_entity, SUM(invoices.grand_total) as total_amount
-      FROM invoices
-      JOIN sales ON sales.id = invoices.sale_id
-      WHERE ${dateCondition.replace('created_at', 'sales.created_at')}
-      GROUP BY invoices.from_entity
-    `, [date]);
-
-    const topProductsRes = await db.query(`
-      SELECT invoice_items.product_name, ROUND(SUM(invoice_items.qty), 2) as total_qty
-      FROM invoice_items
-      JOIN invoices ON invoices.id = invoice_items.invoice_id
-      JOIN sales ON sales.id = invoices.sale_id
-      WHERE ${dateCondition.replace('created_at', 'sales.created_at')}
-      GROUP BY invoice_items.product_name
-      ORDER BY total_qty DESC
-      LIMIT 5
-    `, [date]);
-
-    const reportData = {
-      totalSales: totalSalesRes.rows[0].total || 0,
-      totalInvoices: totalInv,
-      acceptanceRate,
-      routeBreakdown: routeBreakdownRes.rows,
-      topProducts: topProductsRes.rows
-    };
-
-    const pdfBuffer = await generateReportPDF(reportData, type, displayDate);
+    const reportData = await getReportAnalytics(db, type, date);
+    const pdfBuffer = await generateReportPDF(reportData);
 
     const reportsDir = path.join(__dirname, '..', 'pdfs', 'reports');
     if (!fs.existsSync(reportsDir)) {
       fs.mkdirSync(reportsDir, { recursive: true });
     }
 
-    const filename = `report_${type}_${date}_${Date.now()}.pdf`;
+    const filename = reportFilename(type, date, 'pdf').replace('.pdf', `_${Date.now()}.pdf`);
     const filepath = path.join(reportsDir, filename);
     fs.writeFileSync(filepath, pdfBuffer);
 
@@ -502,55 +613,12 @@ router.get('/api/reports/export-csv', requireAuth, async (req, res) => {
   try {
     const { type, date } = req.query;
     if (!['daily', 'weekly', 'monthly'].includes(type)) return res.status(400).json({error: 'Invalid type'});
-    
-    let dateCondition = '';
-    
-    if (type === 'daily') {
-      dateCondition = `date(sales.created_at) = $1`;
-    } else if (type === 'monthly') {
-      dateCondition = `date_trunc('month', sales.created_at) = date_trunc('month', $1::date)`;
-    } else if (type === 'weekly') {
-      dateCondition = `date_trunc('week', sales.created_at) = date_trunc('week', $1::date)`;
-    }
-
-    const routeBreakdownRes = await db.query(`
-      SELECT invoices.from_entity, SUM(invoices.grand_total) as total_amount
-      FROM invoices
-      JOIN sales ON sales.id = invoices.sale_id
-      WHERE ${dateCondition}
-      GROUP BY invoices.from_entity
-    `, [date]);
-
-    const topProductsRes = await db.query(`
-      SELECT invoice_items.product_name, ROUND(SUM(invoice_items.qty), 2) as total_qty, ROUND(SUM(invoice_items.total), 2) as total_revenue
-      FROM invoice_items
-      JOIN invoices ON invoices.id = invoice_items.invoice_id
-      JOIN sales ON sales.id = invoices.sale_id
-      WHERE ${dateCondition}
-      GROUP BY invoice_items.product_name
-      ORDER BY total_revenue DESC
-    `, [date]);
-
-    let csvContent = 'Route Breakdown\nRoute,Total Amount\n';
-    if (routeBreakdownRes.rows.length === 0) {
-      csvContent += 'No data found for this period.,\n';
-    } else {
-      routeBreakdownRes.rows.forEach(r => {
-        csvContent += `"${r.from_entity}","${r.total_amount}"\n`;
-      });
-    }
-    
-    csvContent += '\nTop Products\nProduct,Total Qty,Total Revenue\n';
-    if (topProductsRes.rows.length === 0) {
-      csvContent += 'No data found for this period.,,\n';
-    } else {
-      topProductsRes.rows.forEach(p => {
-        csvContent += `"${p.product_name}","${p.total_qty}","${p.total_revenue}"\n`;
-      });
-    }
+    if (!date) return res.status(400).json({ error: 'Missing date' });
+    const analytics = await getReportAnalytics(db, type, date);
+    const csvContent = buildReportCSV(analytics);
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="report_${type}_${date}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${reportFilename(type, date, 'csv')}"`);
     return res.send(csvContent);
   } catch(err) {
     console.error('CSV Export error:', err);
@@ -562,61 +630,14 @@ router.get('/api/reports/export-excel', requireAuth, async (req, res) => {
   try {
     const { type, date } = req.query;
     if (!['daily', 'weekly', 'monthly'].includes(type)) return res.status(400).json({error: 'Invalid type'});
-    
-    let dateCondition = '';
-    if (type === 'daily') {
-      dateCondition = `date(sales.created_at) = $1`;
-    } else if (type === 'monthly') {
-      dateCondition = `date_trunc('month', sales.created_at) = date_trunc('month', $1::date)`;
-    } else if (type === 'weekly') {
-      dateCondition = `date_trunc('week', sales.created_at) = date_trunc('week', $1::date)`;
-    }
+    if (!date) return res.status(400).json({ error: 'Missing date' });
+    const analytics = await getReportAnalytics(db, type, date);
+    const workbook = buildReportWorkbook(analytics);
+    const buffer = await workbook.xlsx.writeBuffer();
 
-    const routeBreakdownRes = await db.query(`
-      SELECT invoices.from_entity, SUM(invoices.grand_total) as total_amount
-      FROM invoices
-      JOIN sales ON sales.id = invoices.sale_id
-      WHERE ${dateCondition}
-      GROUP BY invoices.from_entity
-    `, [date]);
-
-    const topProductsRes = await db.query(`
-      SELECT invoice_items.product_name, ROUND(SUM(invoice_items.qty), 2) as total_qty, ROUND(SUM(invoice_items.total), 2) as total_revenue
-      FROM invoice_items
-      JOIN invoices ON invoices.id = invoice_items.invoice_id
-      JOIN sales ON sales.id = invoices.sale_id
-      WHERE ${dateCondition}
-      GROUP BY invoice_items.product_name
-      ORDER BY total_revenue DESC
-    `, [date]);
-
-    const html = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8">
-<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
-<x:Name>Report</x:Name>
-<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-</head>
-<body>
-<h3>Route Breakdown</h3>
-<table border="1">
-  <tr><th>Route</th><th>Total Amount</th></tr>
-  ${routeBreakdownRes.rows.length === 0 ? '<tr><td colspan="2" style="text-align:center;">No data found for this period.</td></tr>' : routeBreakdownRes.rows.map(r => `<tr><td>${r.from_entity}</td><td>${r.total_amount}</td></tr>`).join('')}
-</table>
-<br>
-<h3>Top Products</h3>
-<table border="1">
-  <tr><th>Product</th><th>Total Qty</th><th>Total Revenue</th></tr>
-  ${topProductsRes.rows.length === 0 ? '<tr><td colspan="3" style="text-align:center;">No data found for this period.</td></tr>' : topProductsRes.rows.map(r => `<tr><td>${r.product_name}</td><td>${r.total_qty}</td><td>${r.total_revenue}</td></tr>`).join('')}
-</table>
-</body>
-</html>`;
-
-    res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="report_${type}_${date}.xls"`);
-    return res.send(html);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${reportFilename(type, date, 'xlsx')}"`);
+    return res.send(Buffer.from(buffer));
   } catch(err) {
     console.error('Excel Export error:', err);
     res.status(500).json({ error: err.message });

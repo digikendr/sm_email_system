@@ -15,7 +15,16 @@ router.get('/api/gst-rates', async (req, res) => {
 
 router.get('/api/products', async (req, res) => {
     try {
-        const result = await db.query('SELECT * FROM products ORDER BY name ASC');
+        const { category } = req.query;
+        const values = [];
+        let whereClause = '';
+
+        if (category && category !== 'All') {
+            values.push(category);
+            whereClause = 'WHERE cat = $1';
+        }
+
+        const result = await db.query(`SELECT * FROM products ${whereClause} ORDER BY name ASC`, values);
         // We cast numeric fields to numbers to maintain compatibility with the frontend structure
         const products = result.rows.map(row => ({
             id: row.id,
@@ -33,6 +42,21 @@ router.get('/api/products', async (req, res) => {
         res.json(products);
     } catch (err) {
         console.error('Error fetching products:', err.message);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+router.get('/api/product-categories', async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT DISTINCT cat
+            FROM products
+            WHERE cat IS NOT NULL AND TRIM(cat) <> ''
+            ORDER BY cat ASC
+        `);
+        res.json(result.rows.map(row => row.cat));
+    } catch (err) {
+        console.error('Error fetching product categories:', err.message);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });

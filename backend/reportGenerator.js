@@ -1,55 +1,46 @@
 const puppeteer = require('puppeteer');
-const fs = require('fs');
-const path = require('path');
 
 const formatINR = (n) => {
-  return '₹' + (Math.round(n * 100) / 100).toLocaleString('en-IN', {
+  return '₹' + (Math.round(Number(n || 0) * 100) / 100).toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
 };
 
 const formatQty = (n) => {
-  const num = Number(n);
+  const num = Number(n || 0);
   return Number.isInteger(num) ? num : parseFloat(num.toFixed(3));
 };
 
-async function generateReportPDF(reportData, type, dateString) {
-  const { totalSales, totalInvoices, acceptanceRate, routeBreakdown, topProducts } = reportData;
+const escapeHtml = (value) => {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
 
-  const d = new Date();
-  const generatedDate = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-
-  let routeHtml = '';
-  if (routeBreakdown && routeBreakdown.length > 0) {
-    routeBreakdown.forEach(route => {
-      routeHtml += `
-        <tr>
-          <td class="desc">${route.from_entity || 'Unknown'}</td>
-          <td class="r">${formatINR(route.total_amount || 0)}</td>
-        </tr>
-      `;
-    });
-  } else {
-    routeHtml = `<tr><td colspan="2" class="desc" style="text-align:center;color:#8a7a60">No route data available</td></tr>`;
+const rowsHtml = (rows, emptyText, renderRow) => {
+  if (!rows || rows.length === 0) {
+    return `<tr><td colspan="5" class="empty">${escapeHtml(emptyText)}</td></tr>`;
   }
+  return rows.map(renderRow).join('');
+};
 
-  let productsHtml = '';
-  if (topProducts && topProducts.length > 0) {
-    topProducts.forEach((product, i) => {
-      productsHtml += `
-        <tr>
-          <td>${i + 1}</td>
-          <td class="desc">${product.product_name}</td>
-          <td class="r">${formatQty(product.total_qty)}</td>
-        </tr>
-      `;
-    });
-  } else {
-    productsHtml = `<tr><td colspan="3" class="desc" style="text-align:center;color:#8a7a60">No product data available</td></tr>`;
-  }
+async function generateReportPDF(reportData) {
+  const { period, kpis, routeBreakdown, categoryBreakdown, storeBreakdown, topProducts, invoiceStatus, trend } = reportData;
+  const generatedDate = new Date().toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  const title = `${period.type.charAt(0).toUpperCase() + period.type.slice(1)} Business Report`;
 
-  const titlePrefix = type.charAt(0).toUpperCase() + type.slice(1);
+  const maxTrend = Math.max(...trend.map(row => Number(row.customer_sales || 0)), 1);
+  const maxCategory = Math.max(...categoryBreakdown.map(row => Number(row.total_revenue || 0)), 1);
 
   const html = `
     <!DOCTYPE html>
@@ -57,207 +48,259 @@ async function generateReportPDF(reportData, type, dateString) {
     <head>
       <meta charset="utf-8">
       <style>
-        :root {
-          --ink:#1a1410; --paper2:#fffaf0;
-          --d8cbb0:#d8cbb0; --e8dec8:#e8dec8;
-          --8a7a60:#8a7a60; --f0d9a8:#f0d9a8; --b8a884:#b8a884;
-        }
+        @page { size: A4; margin: 16mm; }
+        * { box-sizing: border-box; }
         body {
-          font-family: 'Inter', -apple-system, sans-serif;
-          background: var(--paper2);
-          color: var(--ink);
+          font-family: Inter, Arial, sans-serif;
+          color: #211a14;
           margin: 0;
-          padding: 0;
-          -webkit-font-smoothing: antialiased;
+          background: #fff;
+          font-size: 11px;
+          line-height: 1.45;
         }
-        .inv {
-          background: var(--paper2);
-          width: 100%;
-        }
-        .inv-band {
-          background: var(--ink);
-          color: var(--paper2);
-          padding: 30px 40px;
+        .report-header {
+          border-bottom: 3px solid #211a14;
+          padding-bottom: 16px;
+          margin-bottom: 18px;
           display: flex;
           justify-content: space-between;
           align-items: flex-end;
         }
-        .inv-band .from {
+        .brand {
           font-family: Georgia, serif;
           font-size: 28px;
           font-weight: 700;
-          color: var(--f0d9a8);
+          letter-spacing: .2px;
         }
-        .inv-band .arrow {
-          font-size: 14px;
-          letter-spacing: 1px;
-          color: var(--b8a884);
+        .subtitle {
+          font-size: 12px;
           text-transform: uppercase;
-          margin-top: 6px;
+          letter-spacing: 1.2px;
+          color: #7b6b55;
+          margin-top: 3px;
         }
-        .inv-band .to {
-          font-size: 18px;
-          font-weight: 600;
-          margin-top: 4px;
-        }
-        .inv-band .rt {
+        .meta {
           text-align: right;
-          font-size: 14px;
-          color: #cdbf9f;
-          line-height: 1.7;
+          color: #6f604e;
         }
-        .inv-band .rt b {
-          color: var(--paper2);
-        }
-        .summary-blocks {
-          display: flex;
-          padding: 30px 40px;
-          gap: 20px;
-          background: #fbf5eb;
-          border-bottom: 1px solid var(--d8cbb0);
-        }
-        .s-block {
-          flex: 1;
-          background: #fff;
-          border: 1px solid var(--e8dec8);
-          border-radius: 8px;
-          padding: 20px;
-          text-align: center;
-        }
-        .s-block .lbl {
-          font-size: 13px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          color: var(--8a7a60);
-          font-weight: 600;
-          margin-bottom: 10px;
-        }
-        .s-block .val {
-          font-size: 24px;
-          font-weight: 700;
-          color: var(--ink);
-        }
-        .sections {
-          padding: 0 40px;
-          display: flex;
-          gap: 40px;
-          margin-top: 30px;
-        }
-        .section {
-          flex: 1;
-        }
-        h3 {
+        .meta b { color: #211a14; }
+        h1 {
           font-family: Georgia, serif;
-          color: var(--ink);
+          font-size: 22px;
+          margin: 0 0 4px;
+        }
+        h2 {
+          font-family: Georgia, serif;
+          font-size: 15px;
+          margin: 18px 0 8px;
+          padding-bottom: 5px;
+          border-bottom: 1px solid #d8cbb0;
+        }
+        .summary {
+          background: #fbf5eb;
+          border: 1px solid #d8cbb0;
+          padding: 12px 14px;
+          margin-bottom: 14px;
+        }
+        .summary strong { color: #211a14; }
+        .kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          margin: 12px 0 16px;
+        }
+        .kpi {
+          border: 1px solid #d8cbb0;
+          padding: 10px;
+          min-height: 72px;
+          background: #fffaf0;
+        }
+        .kpi .label {
+          color: #7b6b55;
+          text-transform: uppercase;
+          letter-spacing: .7px;
+          font-size: 9px;
+          font-weight: 700;
+        }
+        .kpi .value {
           font-size: 18px;
-          margin-bottom: 15px;
-          border-bottom: 2px solid var(--e8dec8);
-          padding-bottom: 8px;
+          font-weight: 800;
+          margin-top: 5px;
+        }
+        .kpi .hint {
+          color: #7b6b55;
+          font-size: 10px;
+          margin-top: 2px;
+        }
+        .two-col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          page-break-inside: avoid;
         }
         table {
           width: 100%;
           border-collapse: collapse;
+          margin-bottom: 8px;
+          page-break-inside: avoid;
         }
-        thead th {
-          background: #efe6d2;
-          font-size: 12px;
-          letter-spacing: 0.5px;
-          text-transform: uppercase;
-          color: #7a6843;
+        th {
+          background: #211a14;
+          color: #f4ead7;
           text-align: left;
-          padding: 12px 18px;
-          border-bottom: 1px solid var(--d8cbb0);
+          padding: 7px 8px;
+          font-size: 9px;
+          text-transform: uppercase;
+          letter-spacing: .7px;
         }
-        thead th.r {
-          text-align: right;
+        td {
+          padding: 7px 8px;
+          border-bottom: 1px solid #eadfca;
+          vertical-align: top;
         }
-        tbody td {
-          padding: 14px 18px;
-          border-bottom: 1px solid var(--e8dec8);
-          font-size: 14px;
-          color: var(--ink);
-        }
-        tbody td.r {
-          text-align: right;
-          font-variant-numeric: tabular-nums;
-        }
-        .desc {
-          font-weight: 600;
-        }
+        .r { text-align: right; font-variant-numeric: tabular-nums; }
+        .empty { text-align: center; color: #7b6b55; padding: 16px; }
+        .bar-list { display: flex; flex-direction: column; gap: 7px; }
+        .bar-row { display: grid; grid-template-columns: 92px 1fr 84px; gap: 8px; align-items: center; }
+        .bar-track { height: 8px; background: #efe6d2; overflow: hidden; }
+        .bar-fill { height: 8px; background: #9a5f12; }
+        .muted { color: #7b6b55; }
+        .page-break { page-break-before: always; }
         .footer {
-          margin-top: 50px;
-          text-align: center;
-          font-size: 12px;
-          color: var(--8a7a60);
-          padding: 20px;
-          border-top: 1px dashed var(--e8dec8);
+          margin-top: 18px;
+          padding-top: 10px;
+          border-top: 1px solid #d8cbb0;
+          color: #7b6b55;
+          display: flex;
+          justify-content: space-between;
+          font-size: 10px;
         }
       </style>
     </head>
     <body>
-      <div class="inv">
-        <div class="inv-band">
-          <div>
-            <div class="from">Sugandh Mart</div>
-            <div class="arrow">▾ business analytics</div>
-            <div class="to">${titlePrefix} Report</div>
-          </div>
-          <div class="rt">
-            Period <b>${dateString}</b><br>
-            Generated <b>${generatedDate}</b>
-          </div>
+      <header class="report-header">
+        <div>
+          <div class="brand">Sugandh Mart</div>
+          <div class="subtitle">Central Ledger Analytics</div>
         </div>
-        
-        <div class="summary-blocks">
-          <div class="s-block">
-            <div class="lbl">Total Sales</div>
-            <div class="val">${formatINR(totalSales)}</div>
-          </div>
-          <div class="s-block">
-            <div class="lbl">Invoices Created</div>
-            <div class="val">${totalInvoices}</div>
-          </div>
-          <div class="s-block">
-            <div class="lbl">Acceptance Rate</div>
-            <div class="val">${acceptanceRate}%</div>
-          </div>
+        <div class="meta">
+          <h1>${escapeHtml(title)}</h1>
+          Period <b>${escapeHtml(period.label)}</b><br>
+          Generated <b>${escapeHtml(generatedDate)}</b>
         </div>
+      </header>
 
-        <div class="sections">
-          <div class="section">
-            <h3>Sales by Route</h3>
+      <section class="summary">
+        <strong>Executive summary:</strong>
+        Sugandh Mart recorded <strong>${formatINR(kpis.totalCustomerSales)}</strong> in customer sales
+        across <strong>${kpis.salesCount}</strong> bills for this period. Linked chain invoices total
+        <strong>${formatINR(kpis.invoiceGrandTotal)}</strong>, with an acceptance rate of
+        <strong>${kpis.acceptanceRate}%</strong>.
+      </section>
+
+      <section class="kpi-grid">
+        <div class="kpi"><div class="label">Customer Sales</div><div class="value">${formatINR(kpis.totalCustomerSales)}</div><div class="hint">${kpis.salesCount} retail bills</div></div>
+        <div class="kpi"><div class="label">Invoice Value</div><div class="value">${formatINR(kpis.invoiceGrandTotal)}</div><div class="hint">${kpis.totalInvoices} chain invoices</div></div>
+        <div class="kpi"><div class="label">Acceptance Rate</div><div class="value">${kpis.acceptanceRate}%</div><div class="hint">${kpis.acceptedCount} accepted</div></div>
+        <div class="kpi"><div class="label">Average Bill</div><div class="value">${formatINR(kpis.averageBillValue)}</div><div class="hint">customer bill value</div></div>
+        <div class="kpi"><div class="label">Best Route</div><div class="value" style="font-size:14px">${escapeHtml(kpis.bestRoute || '-')}</div><div class="hint">by invoice value</div></div>
+        <div class="kpi"><div class="label">Top Category</div><div class="value" style="font-size:14px">${escapeHtml(kpis.topCategory || '-')}</div><div class="hint">by revenue</div></div>
+        <div class="kpi"><div class="label">Top Product</div><div class="value" style="font-size:14px">${escapeHtml(kpis.topProduct || '-')}</div><div class="hint">by revenue</div></div>
+        <div class="kpi"><div class="label">GST in Invoices</div><div class="value">${formatINR(kpis.invoiceGst)}</div><div class="hint">chain GST total</div></div>
+      </section>
+
+      <div class="two-col">
+        <section>
+          <h2>Sales Trend</h2>
+          <div class="bar-list">
+            ${trend.length ? trend.map(row => `
+              <div class="bar-row">
+                <div>${escapeHtml(String(row.date).slice(0, 10))}</div>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.max(3, (Number(row.customer_sales || 0) / maxTrend) * 100)}%"></div></div>
+                <div class="r">${formatINR(row.customer_sales)}</div>
+              </div>
+            `).join('') : '<div class="empty">No sales recorded for this period.</div>'}
+          </div>
+        </section>
+        <section>
+          <h2>Top Categories</h2>
+          <div class="bar-list">
+            ${categoryBreakdown.length ? categoryBreakdown.slice(0, 8).map(row => `
+              <div class="bar-row">
+                <div>${escapeHtml(row.category)}</div>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.max(3, (Number(row.total_revenue || 0) / maxCategory) * 100)}%"></div></div>
+                <div class="r">${formatINR(row.total_revenue)}</div>
+              </div>
+            `).join('') : '<div class="empty">No category data for this period.</div>'}
+          </div>
+        </section>
+      </div>
+
+      <div class="two-col">
+        <section>
+          <h2>Route Performance</h2>
+          <table>
+            <thead><tr><th>Route</th><th class="r">Invoices</th><th class="r">Value</th></tr></thead>
+            <tbody>
+              ${rowsHtml(routeBreakdown, 'No route data for this period.', row => `
+                <tr><td>${escapeHtml(row.route_label)}</td><td class="r">${row.invoice_count}</td><td class="r">${formatINR(row.total_amount)}</td></tr>
+              `)}
+            </tbody>
+          </table>
+        </section>
+        <section>
+          <h2>Store Performance</h2>
+          <table>
+            <thead><tr><th>Store</th><th class="r">Bills</th><th class="r">Customer Sales</th></tr></thead>
+            <tbody>
+              ${rowsHtml(storeBreakdown, 'No store data for this period.', row => `
+                <tr><td>${escapeHtml(row.store)}</td><td class="r">${row.sales_count}</td><td class="r">${formatINR(row.customer_sales)}</td></tr>
+              `)}
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <section class="page-break">
+        <h2>Top Products</h2>
+        <table>
+          <thead><tr><th>#</th><th>Product</th><th>Category</th><th class="r">Qty</th><th class="r">Revenue</th></tr></thead>
+          <tbody>
+            ${rowsHtml(topProducts, 'No product sales for this period.', (row, i) => `
+              <tr><td>${i + 1}</td><td>${escapeHtml(row.product_name)}</td><td>${escapeHtml(row.category)}</td><td class="r">${formatQty(row.total_qty)}</td><td class="r">${formatINR(row.total_revenue)}</td></tr>
+            `)}
+          </tbody>
+        </table>
+
+        <div class="two-col">
+          <section>
+            <h2>Category Breakdown</h2>
             <table>
-              <thead>
-                <tr>
-                  <th>Route / Entity</th>
-                  <th class="r">Amount</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Category</th><th class="r">Qty</th><th class="r">Revenue</th></tr></thead>
               <tbody>
-                ${routeHtml}
+                ${rowsHtml(categoryBreakdown, 'No category data for this period.', row => `
+                  <tr><td>${escapeHtml(row.category)}</td><td class="r">${formatQty(row.total_qty)}</td><td class="r">${formatINR(row.total_revenue)}</td></tr>
+                `)}
               </tbody>
             </table>
-          </div>
-          <div class="section">
-            <h3>Top Products</h3>
+          </section>
+          <section>
+            <h2>Invoice Status</h2>
             <table>
-              <thead>
-                <tr>
-                  <th style="width:40px">#</th>
-                  <th>Product Name</th>
-                  <th class="r">Units Sold</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Status</th><th class="r">Invoices</th><th class="r">Value</th></tr></thead>
               <tbody>
-                ${productsHtml}
+                ${rowsHtml(invoiceStatus, 'No invoices for this period.', row => `
+                  <tr><td>${escapeHtml(row.status)}</td><td class="r">${row.count}</td><td class="r">${formatINR(row.total_amount)}</td></tr>
+                `)}
               </tbody>
             </table>
-          </div>
+          </section>
         </div>
+      </section>
 
-        <div class="footer">
-          Auto-generated by Sugandh Mart Central Ledger System
-        </div>
+      <div class="footer">
+        <span>Auto-generated by Sugandh Mart Central Ledger System</span>
+        <span>${escapeHtml(period.label)}</span>
       </div>
     </body>
     </html>
@@ -272,21 +315,14 @@ async function generateReportPDF(reportData, type, dateString) {
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({
+    return await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: '0', right: '0', bottom: '0', left: '0' }
     });
-
-    return pdfBuffer;
-  } catch (error) {
-    console.error('Error generating report PDF:', error);
-    throw error;
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 }
 
-module.exports = { generateReportPDF };
+module.exports = { generateReportPDF, formatINR, formatQty };
