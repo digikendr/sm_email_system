@@ -1,3 +1,20 @@
+:root {
+  --ink: #1a1410;
+  --ink2: #2b2018;
+  --paper: #f6f0e4;
+  --paper2: #fffaf0;
+  --amber: #c8841f;
+  --amber-d: #9a5f12;
+  --amber-l: #f0d9a8;
+  --moss: #5a6b3b;
+  --rose: #9c4a3c;
+  --line: #d8cbb0;
+  --line2: #e8dec8;
+  --good: #2b8a3e;
+  --muted: #8a7a60;
+  --shadow: rgba(40, 28, 12, 0.14);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

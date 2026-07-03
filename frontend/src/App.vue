@@ -343,7 +343,7 @@
                   
                   <!-- Manual Complete Button -->
                   <div style="margin-top: 15px;">
-                    <button v-if="sale.status === 'open'" @click="updateSaleStatus(sale.id, 'closed')" style="width: 100%; padding: 10px; background: #3f7a4d; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                    <button v-if="sale.status === 'open'" @click="updateSaleStatus(sale.id, 'closed')" style="width: 100%; padding: 10px; background: #2b8a3e; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
                       Complete Order & Close Bill
                     </button>
                     <button v-else @click="updateSaleStatus(sale.id, 'open')" style="width: 100%; padding: 10px; background: var(--paper2); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
@@ -369,7 +369,7 @@
                           <td style="font-weight:600; padding: 10px 15px; border-bottom: 1px solid var(--e8dec8);">{{ inv.from_entity }} → {{ inv.to_entity }}</td>
                           <td style="font-family:monospace; color:var(--muted); padding: 10px 15px; border-bottom: 1px solid var(--e8dec8);">{{ inv.invoice_number }}</td>
                           <td style="padding: 10px 15px; border-bottom: 1px solid var(--e8dec8);">
-                            <span v-if="inv.status === 'accepted'" style="color:#3f7a4d; font-weight:600;">Accepted</span>
+                            <span v-if="inv.status === 'accepted'" style="color:#2b8a3e; font-weight:600;">Accepted</span>
                             <span v-else-if="inv.status === 'rejected'" style="color:#9c4a3c; font-weight:600;">Rejected</span>
                             <span v-else style="color:#b7791f; font-weight:600;">Awaiting Action</span>
                           </td>
@@ -644,35 +644,48 @@
                 </div>
               </div>
               
-              <div class="table-responsive" v-if="sale.invoices && sale.invoices.length > 0">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Route</th>
-                    <th>Invoice Number</th>
-                    <th>Grand Total</th>
-                    <th>Acceptance Status</th>
-                    <th style="text-align: center;">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="inv in sale.invoices" :key="inv.id">
-                    <td style="font-weight: 600;">{{ inv.from_entity }} → {{ inv.to_entity }}</td>
-                    <td style="font-family: monospace; font-weight: 600;">{{ inv.invoice_number }}</td>
-                    <td style="font-weight: 600;">{{ formatINR(inv.grand_total) }}</td>
-                    <td>
-                      <span class="badge" :class="inv.status">{{ inv.status }}</span>
-                      <span v-if="inv.status === 'accepted' && inv.accepted_at" class="timestamp">Accepted: {{ formatDateDash(inv.accepted_at) }}</span>
-                      <span v-else-if="inv.status === 'rejected' && inv.rejected_at" class="timestamp">Rejected: {{ formatDateDash(inv.rejected_at) }}</span>
-                      <span v-else-if="inv.emailed_at" class="timestamp">Emailed: {{ formatDateDash(inv.emailed_at) }}</span>
-                    </td>
-                    <td style="text-align: center;">
-                      <a :href="'/invoice/' + inv.invoice_number + '/pdf'" target="_blank" class="btn-download" title="Download PDF">📄 Download</a>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              </div>
+               <div class="table-responsive" v-if="sale.invoices && sale.invoices.length > 0">
+               <table>
+                 <thead>
+                   <tr>
+                     <th>Route</th>
+                     <th>Invoice Number</th>
+                     <th>Grand Total</th>
+                     <th>Type</th>
+                     <th>Acceptance Status</th>
+                     <th style="text-align: center; width: 230px;">Action</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   <tr v-for="inv in sale.invoices" :key="inv.id">
+                     <td style="font-weight: 600;">{{ inv.from_entity }} → {{ inv.to_entity }}</td>
+                     <td style="font-family: monospace; font-weight: 600;">{{ inv.invoice_number }}</td>
+                     <td style="font-weight: 600;">{{ formatINR(inv.grand_total) }}</td>
+                      <td>
+                        <span class="badge" :style="inv.invoice_type === 'TAX' ? 'background: #e6fffa; color: #234e52; border: 1px solid #b2f5ea;' : (inv.invoice_type === 'PI' ? 'background: #ebf8ff; color: #2b6cb0; border: 1px solid #bee3f8;' : 'background: #edf2f7; color: #4a5568; border: 1px solid #cbd5e0;')">{{ inv.invoice_type || 'PO' }}</span>
+                      </td>
+                      <td>
+                        <span class="badge" :class="inv.status">{{ inv.status }}</span>
+                        <span v-if="inv.status === 'accepted' && inv.accepted_at" class="timestamp">Accepted: {{ formatDateDash(inv.accepted_at) }}</span>
+                        <span v-else-if="inv.status === 'rejected' && inv.rejected_at" class="timestamp">Rejected: {{ formatDateDash(inv.rejected_at) }}</span>
+                        <span v-else-if="inv.emailed_at" class="timestamp">Emailed: {{ formatDateDash(inv.emailed_at) }}</span>
+                      </td>
+                      <td style="text-align: center;">
+                        <div style="display: flex; gap: 6px; justify-content: center; align-items: center;">
+                          <a :href="'/invoice/' + inv.invoice_number + '/pdf'" target="_blank" class="btn-download" title="Download PDF">📄 PDF</a>
+                          <button v-if="inv.invoice_type === 'PI'" @click="openEditInvoiceModal(inv)" class="btn-download" title="Edit Invoice Details">✏️ Edit</button>
+                          <button v-if="inv.invoice_type === 'PI'" @click="convertToTaxInvoice(inv.id)" class="btn-download" style="background: #2b8a3e; color: white; border-color: #2b8a3e;" title="Convert to Tax Invoice" :disabled="convertingInvoiceId === inv.id">
+                            {{ convertingInvoiceId === inv.id ? '...' : 'Convert' }}
+                          </button>
+                          <button v-if="inv.invoice_type === 'PI' && inv.status === 'accepted'" @click="cancelInvoice(inv.id)" class="btn-download" style="background: #9c4a3c; color: white; border-color: #9c4a3c;" title="Cancel Invoice" :disabled="cancellingInvoiceId === inv.id">
+                            {{ cancellingInvoiceId === inv.id ? '...' : 'Cancel' }}
+                          </button>
+                        </div>
+                      </td>
+                   </tr>
+                 </tbody>
+               </table>
+               </div>
               <p v-else style="font-size:12px; color:var(--muted); font-style:italic; margin-top:10px;">No linked invoices generated up the chain for this sale.</p>
             </div>
           </div>
@@ -777,6 +790,97 @@
         </div>
       </div>
     </div> <!-- Added missing closing div for modal-overlay -->
+
+    <!-- Edit Invoice Modal -->
+    <div v-if="editingInvoiceData" class="modal-overlay" @click.self="closeEditInvoiceModal">
+      <div class="modal-content" style="max-width: 600px; width: 95%; max-height: 85vh; overflow-y: auto;">
+        <h3 style="margin-top:0; font-family:Georgia,serif; border-bottom:1px solid var(--e8dec8); padding-bottom:10px;">Edit Invoice Details</h3>
+        <div style="font-weight:600; font-size:16px; margin-bottom:4px; color:var(--ink);">Invoice #{{ editingInvoiceData.invoice_number }}</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:20px;">Route: {{ editingInvoiceData.from_entity }} → {{ editingInvoiceData.to_entity }} | Type: {{ editingInvoiceData.invoice_type || 'PO' }}</div>
+        
+        <div style="text-align: left; margin-bottom: 20px;">
+          <!-- SELLER DETAILS -->
+          <h4 style="margin: 0 0 10px 0; border-bottom: 1px solid var(--line2); padding-bottom: 4px; color: var(--amber-d);">Seller Details</h4>
+          <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:15px;">
+            <div>
+              <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Seller Name</label>
+              <input type="text" v-model="editingInvoiceData.seller_name" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+            </div>
+            <div>
+              <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Seller Address</label>
+              <textarea v-model="editingInvoiceData.seller_address" rows="3" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px; font-family: inherit; font-size: 13px;"></textarea>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div>
+                <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Seller Mobile</label>
+                <input type="text" v-model="editingInvoiceData.seller_mob" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Seller GST</label>
+                <input type="text" v-model="editingInvoiceData.seller_gst" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+              </div>
+            </div>
+            <div>
+              <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Seller PAN</label>
+              <input type="text" v-model="editingInvoiceData.seller_pan" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+            </div>
+          </div>
+          
+          <!-- BUYER DETAILS -->
+          <h4 style="margin: 20px 0 10px 0; border-bottom: 1px solid var(--line2); padding-bottom: 4px; color: var(--amber-d);">Buyer Details (Bill To)</h4>
+          <div style="display:grid; grid-template-columns:1fr; gap:10px;">
+            <div>
+              <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Buyer Name</label>
+              <input type="text" v-model="editingInvoiceData.buyer_name" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+            </div>
+            <div>
+              <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Buyer Address</label>
+              <textarea v-model="editingInvoiceData.buyer_address" rows="3" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px; font-family: inherit; font-size: 13px;"></textarea>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div>
+                <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Buyer Mobile</label>
+                <input type="text" v-model="editingInvoiceData.buyer_mob" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:4px;">Buyer GST</label>
+                <input type="text" v-model="editingInvoiceData.buyer_gst" style="width:100%; box-sizing:border-box; background:#fff; color:var(--ink); border:1px solid var(--d8cbb0); padding:8px; border-radius:4px;">
+              </div>
+            </div>
+          </div>
+          
+          <!-- INVOICE ITEMS & QUANTITIES -->
+          <h4 style="margin: 20px 0 10px 0; border-bottom: 1px solid var(--line2); padding-bottom: 4px; color: var(--amber-d);">Items & Quantities</h4>
+          <div v-if="editingInvoiceData.items && editingInvoiceData.items.length > 0" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px;">
+            <div v-for="item in editingInvoiceData.items" :key="item.id" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; align-items: center; background: #fbf9f4; padding: 6px 10px; border-radius: 4px; border: 1px solid #e8dec8;">
+              <div style="font-size: 13px; font-weight: 600; color: var(--ink);">{{ item.product_name || item.name }}</div>
+              <div style="font-size: 12px; color: var(--muted); text-align: right;">Rate: {{ formatINR(item.rate) }}</div>
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                <span style="font-size: 11px; color: var(--muted);">Qty:</span>
+                <input type="number" v-model.number="item.qty" min="1" style="width: 70px; box-sizing: border-box; background: #fff; color: var(--ink); border: 1px solid var(--d8cbb0); padding: 4px 6px; border-radius: 4px; font-size: 13px; text-align: center;">
+              </div>
+            </div>
+
+            <!-- RUNNING TOTALS -->
+            <div style="margin-top: 15px; padding: 10px; background: #f6f0e4; border-radius: 6px; border: 1px solid #d8cbb0; text-align: right;">
+              <div style="font-size: 12px; color: var(--muted);">Subtotal: <strong style="color: var(--ink);">{{ formatINR(editingInvoiceTotal.subtotal) }}</strong></div>
+              <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">GST: <strong style="color: var(--ink);">{{ formatINR(editingInvoiceTotal.gst) }}</strong></div>
+              <div style="font-size: 15px; font-weight: 700; color: var(--good); margin-top: 6px; border-top: 1px dashed #d8cbb0; padding-top: 6px;">
+                Estimated Total: {{ formatINR(editingInvoiceTotal.grand) }}
+              </div>
+            </div>
+          </div>
+          <div v-else style="font-size:12px; color:var(--muted); font-style:italic; margin-bottom: 15px;">No items found for this invoice.</div>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button @click="closeEditInvoiceModal" class="btn-cancel">Cancel</button>
+          <button @click="saveInvoiceEdit" class="btn-verify" :disabled="savingInvoice">
+            {{ savingInvoice ? 'Saving...' : 'Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </div>
     
     <!-- Toast Notification -->
     <div class="toast" :class="{ 'show': showToast }">
@@ -995,6 +1099,126 @@ const adminProductSearch = ref('');
 const adminCategoryFilter = ref('');
 const editingProductData = ref(null);
 const savingProduct = ref(false);
+
+const editingInvoiceData = ref(null);
+const savingInvoice = ref(false);
+const convertingInvoiceId = ref(null);
+
+const editingInvoiceTotal = computed(() => {
+  if (!editingInvoiceData.value || !editingInvoiceData.value.items) return { subtotal: 0, gst: 0, grand: 0 };
+  let subtotal = 0;
+  editingInvoiceData.value.items.forEach(item => {
+    subtotal += (Number(item.qty) || 0) * (Number(item.rate) || 0);
+  });
+  
+  const originalAmount = Number(editingInvoiceData.value.amount) || 0;
+  const originalGst = Number(editingInvoiceData.value.gst) || 0;
+  const gstRatio = originalAmount > 0 ? (originalGst / originalAmount) : 0;
+  
+  const gst = subtotal * gstRatio;
+  const grand = subtotal + gst;
+  
+  return { subtotal, gst, grand };
+});
+
+const openEditInvoiceModal = (invoice) => {
+  editingInvoiceData.value = { ...invoice };
+};
+
+const closeEditInvoiceModal = () => {
+  editingInvoiceData.value = null;
+};
+
+const saveInvoiceEdit = async () => {
+  if (!editingInvoiceData.value) return;
+  savingInvoice.value = true;
+  try {
+    const res = await fetch(`/api/invoices/${editingInvoiceData.value.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(editingInvoiceData.value)
+    });
+    
+    if (res.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Failed to update invoice');
+    }
+    
+    await fetchDashboard();
+    closeEditInvoiceModal();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    savingInvoice.value = false;
+  }
+};
+
+const convertToTaxInvoice = async (invoiceId) => {
+  if (!confirm('Are you sure you want to convert this PO invoice to a TAX invoice?')) return;
+  convertingInvoiceId.value = invoiceId;
+  try {
+    const res = await fetch(`/api/invoices/${invoiceId}/convert`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (res.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Failed to convert invoice');
+    }
+
+    await fetchDashboard();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    convertingInvoiceId.value = null;
+  }
+};
+
+const cancellingInvoiceId = ref(null);
+
+const cancelInvoice = async (invoiceId) => {
+  if (!confirm('Are you sure you want to cancel this pending invoice? Once cancelled, it cannot be accepted or processed.')) return;
+  cancellingInvoiceId.value = invoiceId;
+  try {
+    const res = await fetch(`/api/invoices/${invoiceId}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (res.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Failed to cancel invoice');
+    }
+
+    await fetchDashboard();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    cancellingInvoiceId.value = null;
+  }
+};
 
 const filteredAdminProducts = computed(() => {
   const q = adminProductSearch.value.toLowerCase().trim();
@@ -1284,7 +1508,7 @@ const renderReportCharts = () => {
     if (!reportAnalytics.value) return;
     destroyReportCharts();
     const data = reportAnalytics.value;
-    const palette = ['#9a5f12', '#3f7a4d', '#8a3a2c', '#46591f', '#7a6843', '#c8841f'];
+    const palette = ['#9a5f12', '#2b8a3e', '#8a3a2c', '#46591f', '#7a6843', '#c8841f'];
 
     reportSalesTrendChart = makeChart(reportSalesTrendChart, 'reportSalesTrendChart', {
       type: 'line',
@@ -1302,8 +1526,8 @@ const renderReportCharts = () => {
           {
             label: 'Invoice Value',
             data: data.trend.map(row => Number(row.invoice_value || 0)),
-            borderColor: '#3f7a4d',
-            backgroundColor: 'rgba(63,122,77,.08)',
+            borderColor: '#2b8a3e',
+            backgroundColor: 'rgba(43,138,62,.08)',
             fill: true,
             tension: .3
           }
@@ -1343,7 +1567,7 @@ const renderReportCharts = () => {
       type: 'doughnut',
       data: {
         labels: data.invoiceStatus.map(row => row.status),
-        datasets: [{ data: data.invoiceStatus.map(row => Number(row.count || 0)), backgroundColor: ['#3f7a4d', '#b7791f', '#9c4a3c'] }]
+        datasets: [{ data: data.invoiceStatus.map(row => Number(row.count || 0)), backgroundColor: ['#2b8a3e', '#b7791f', '#9c4a3c'] }]
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
     });
@@ -1385,7 +1609,7 @@ const renderChart = (dailySales) => {
     });
 
     const labels = Array.from(labelsSet).sort();
-    const colors = ['#b8a884', '#9a5f12', '#3f7a4d', '#c8841f', '#8a7a60'];
+    const colors = ['#b8a884', '#9a5f12', '#2b8a3e', '#c8841f', '#8a7a60'];
 
     const datasets = Object.keys(datasetsMap).map((entity, idx) => {
       return {
@@ -1437,8 +1661,8 @@ const renderAcceptanceChart = (weeklyTrend) => {
             const accepted = parseInt(d.accepted_invoices);
             return total > 0 ? ((accepted / total) * 100).toFixed(1) : 0;
           }),
-          borderColor: '#3f7a4d',
-          backgroundColor: 'rgba(63, 122, 77, 0.1)',
+          borderColor: '#2b8a3e',
+          backgroundColor: 'rgba(43, 138, 62, 0.1)',
           fill: true,
           tension: 0.3
         }]
@@ -1940,11 +2164,11 @@ const sendInvoices = async () => {
 </script>
 
 <style scoped>
-:root{
+:global(:root){
   --ink:#1a1410; --ink2:#2b2018; --paper:#f6f0e4; --paper2:#fffaf0;
   --amber:#c8841f; --amber-d:#9a5f12; --amber-l:#f0d9a8;
   --moss:#5a6b3b; --rose:#9c4a3c; --line:#d8cbb0; --line2:#e8dec8;
-  --good:#3f7a4d; --muted:#8a7a60; --shadow:rgba(40,28,12,.14);
+  --good:#2b8a3e; --muted:#8a7a60; --shadow:rgba(40,28,12,.14);
 }
 
 .app-container {
@@ -2062,7 +2286,7 @@ select:focus,input:focus{border-color:#c8841f}
 .send-btn {
   display: block;
   width: 100%;
-  background: #3f7a4d;
+  background: #2b8a3e;
   color: #fff;
   border: none;
   padding: 12px;
@@ -2092,7 +2316,7 @@ select:focus,input:focus{border-color:#c8841f}
   display:flex;align-items:center;gap:7px
 }
 .tab .dot{width:7px;height:7px;border-radius:50%;background:#d8cbb0}
-.tab.has .dot{background:#3f7a4d}
+.tab.has .dot{background:#2b8a3e}
 .tab.active{background:#fffaf0;color:#1a1410;border-color:#d8cbb0}
 .tab .cnt{background:#1a1410;color:#fffaf0;font-size:10px;padding:1px 6px;border-radius:20px;font-weight:700}
 .tab.active .cnt{background:#c8841f;color:#241a12}
@@ -2175,6 +2399,7 @@ tbody tr:last-child td{border-bottom:none}
 .badge.pending { background: #fdf3e2; color: #b7791f; border: 1px solid #fbd38d; }
 .badge.accepted { background: #e6fffa; color: #234e52; border: 1px solid #b2f5ea; }
 .badge.rejected { background: #fff5f5; color: #9b2c2c; border: 1px solid #feb2b2; }
+.badge.cancelled { background: #edf2f7; color: #4a5568; border: 1px solid #cbd5e0; }
 .timestamp { font-size: 10px; color: var(--muted); display: block; margin-top: 4px; }
 
 .btn-download { display: inline-block; background: #f6f0e4; color: #1a1410; border: 1px solid #d8cbb0; padding: 6px 10px; border-radius: 6px; text-decoration: none; font-size: 11px; font-weight: 600; transition: all 0.2s; }
@@ -2246,7 +2471,7 @@ tbody tr:last-child td{border-bottom:none}
   border-color: #c8841f; /* Amber border on hover */
 }
 .portal-card.shopkeeper:hover {
-  border-color: #3f7a4d; /* Green border on hover */
+  border-color: #2b8a3e; /* Green border on hover */
 }
 .portal-card:hover::before {
   height: 6px;
@@ -2301,8 +2526,8 @@ tbody tr:last-child td{border-bottom:none}
 .btn-cancel, .btn-verify { flex: 1; padding: 14px; border: none; border-radius: 12px; cursor: pointer; font-weight: 700; font-size: 14px; transition: all 0.2s; appearance: none; -webkit-appearance: none; }
 .btn-cancel { background-color: rgba(232, 222, 200, 0.7); color: var(--ink); }
 .btn-cancel:hover { background-color: rgba(216, 203, 176, 0.9); transform: translateY(-1px); }
-.btn-verify { background-color: var(--amber); background-image: linear-gradient(135deg, var(--amber) 0%, var(--amber-d) 100%); color: #fff; box-shadow: 0 4px 12px rgba(200, 132, 31, 0.3); }
-.btn-verify:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(200, 132, 31, 0.4); filter: brightness(1.1); }
+.btn-verify { background-color: var(--good); background-image: linear-gradient(135deg, var(--good) 0%, #1e6b30 100%); color: #fff; box-shadow: 0 4px 12px rgba(43, 138, 62, 0.3); }
+.btn-verify:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(43, 138, 62, 0.4); filter: brightness(1.1); }
 .btn-verify:active { transform: translateY(0); }
 
 .dash-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
@@ -2340,7 +2565,7 @@ tbody tr:last-child td{border-bottom:none}
 .report-kpi strong{display:block;font-size:19px;color:var(--ink);line-height:1.15}
 .report-kpi small{display:block;color:var(--muted);margin-top:6px;font-size:11px}
 .report-actions{display:flex;gap:10px;flex-wrap:wrap}
-.report-actions button:nth-child(2){background:#3f7a4d;border-color:#3f7a4d;color:#fff}
+.report-actions button:nth-child(2){background:#2b8a3e;border-color:#2b8a3e;color:#fff}
 .report-actions button:nth-child(3){background:#fff;color:var(--ink);border-color:var(--line)}
 .report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .report-panel{background:#fff;border:1px solid var(--e8dec8);border-radius:8px;padding:16px;min-width:0}
@@ -2351,7 +2576,7 @@ tbody tr:last-child td{border-bottom:none}
 .chart-box canvas{display:block;width:100% !important;height:100% !important}
 .report-empty{height:220px;display:flex;align-items:center;justify-content:center;color:var(--muted);border:1px dashed var(--line);border-radius:6px;background:#fffaf0;font-size:13px}
 .report-tables{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start}
-.mini-link{display:inline-block;background:none;border:none;color:#3f7a4d;font-weight:800;font-size:11px;text-decoration:none;cursor:pointer;margin-left:8px;padding:0}
+.mini-link{display:inline-block;background:none;border:none;color:#2b8a3e;font-weight:800;font-size:11px;text-decoration:none;cursor:pointer;margin-left:8px;padding:0}
 
 @media (max-width: 900px){
   .report-toolbar{align-items:stretch;flex-direction:column}

@@ -123,7 +123,7 @@ async function sendInvoiceEmail(toEmail, invoice, acceptUrl, rejectUrl) {
             min-width: 100px;
           }
           .btn-accept {
-            background-color: #3f7a4d;
+            background-color: #2b8a3e;
           }
           .btn-reject {
             background-color: #9c4a3c;
@@ -163,8 +163,8 @@ async function sendInvoiceEmail(toEmail, invoice, acceptUrl, rejectUrl) {
             <!-- Table layout for button compatibility across email clients -->
             <table align="center" border="0" cellpadding="0" cellspacing="0">
               <tr>
-                <td align="center" style="border-radius: 6px;" bgcolor="#3f7a4d">
-                  <a href="${acceptUrl}" class="btn btn-accept" style="display: block; border: 12px solid #3f7a4d; border-radius: 6px; background-color: #3f7a4d; color: #ffffff; text-decoration: none; font-weight: bold;">Accept</a>
+                <td align="center" style="border-radius: 6px;" bgcolor="#2b8a3e">
+                  <a href="${acceptUrl}" class="btn btn-accept" style="display: block; border: 12px solid #2b8a3e; border-radius: 6px; background-color: #2b8a3e; color: #ffffff; text-decoration: none; font-weight: bold;">Accept</a>
                 </td>
                 <td width="20"></td>
                 <td align="center" style="border-radius: 6px;" bgcolor="#9c4a3c">

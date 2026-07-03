@@ -85,21 +85,22 @@ const companyData = {
 };
 
 async function generateInvoicePDF(invoice, store, date) {
-  const cd = companyData[invoice.from_entity] || {
-    sellerName: COMPANY_NAMES[invoice.from_entity] || invoice.from_entity,
-    sellerAddress: '-',
-    sellerMob: '-',
-    sellerGst: '-',
-    sellerPan: '-',
-    buyerName: COMPANY_NAMES[invoice.to_entity] || invoice.to_entity,
-    buyerAddress: '-',
-    buyerMob: '-',
-    buyerGst: '-',
-    bankName: '-',
-    bankAcType: '-',
-    bankAcNo: '-',
-    bankIfsc: '-',
-    bankBranch: '-'
+  const cdDefault = companyData[invoice.from_entity] || {};
+  const cd = {
+    sellerName: invoice.seller_name || cdDefault.sellerName || COMPANY_NAMES[invoice.from_entity] || invoice.from_entity,
+    sellerAddress: invoice.seller_address || cdDefault.sellerAddress || '-',
+    sellerMob: invoice.seller_mob || cdDefault.sellerMob || '-',
+    sellerGst: invoice.seller_gst || cdDefault.sellerGst || '-',
+    sellerPan: invoice.seller_pan || cdDefault.sellerPan || '-',
+    buyerName: invoice.buyer_name || cdDefault.buyerName || COMPANY_NAMES[invoice.to_entity] || invoice.to_entity,
+    buyerAddress: invoice.buyer_address || cdDefault.buyerAddress || '-',
+    buyerMob: invoice.buyer_mob || cdDefault.buyerMob || '-',
+    buyerGst: invoice.buyer_gst || cdDefault.buyerGst || '-',
+    bankName: cdDefault.bankName || '-',
+    bankAcType: cdDefault.bankAcType || '-',
+    bankAcNo: cdDefault.bankAcNo || '-',
+    bankIfsc: cdDefault.bankIfsc || '-',
+    bankBranch: cdDefault.bankBranch || '-'
   };
 
   const d = new Date(date || new Date());
@@ -175,7 +176,7 @@ async function generateInvoicePDF(invoice, store, date) {
     </head>
     <body>
       <div class="container">
-        <div class="header">TAX INVOICE</div>
+        <div class="header">${invoice.invoice_type === 'TAX' ? 'TAX INVOICE' : (invoice.invoice_type === 'PI' ? 'PROFORMA INVOICE' : 'PURCHASE ORDER')}</div>
         
         <div class="row">
           <div class="col-6 border-right">
@@ -337,4 +338,4 @@ async function generateInvoicePDF(invoice, store, date) {
   }
 }
 
-module.exports = { generateInvoicePDF };
+module.exports = { generateInvoicePDF, companyData, COMPANY_NAMES };

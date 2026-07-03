@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { sendInvoiceEmail } = require('../mailer');
+const { companyData, COMPANY_NAMES } = require('../pdfGenerator');
 
 // Map entities to their configured environment variable email addresses
 const getEntityEmail = (entity) => {
@@ -47,11 +48,32 @@ router.post('/bill', async (req, res) => {
 
       const generatedInvoiceNumber = `PENDING-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+      const cd = companyData[from_entity] || {
+        sellerName: COMPANY_NAMES[from_entity] || from_entity,
+        sellerAddress: '-',
+        sellerMob: '-',
+        sellerGst: '-',
+        sellerPan: '-',
+        buyerName: COMPANY_NAMES[to_entity] || to_entity,
+        buyerAddress: '-',
+        buyerMob: '-',
+        buyerGst: '-'
+      };
+
       // Insert invoice record into database to generate the UUID token
       const invoiceResult = await client.query(
-        `INSERT INTO invoices (sale_id, from_entity, to_entity, invoice_number, amount, gst, grand_total, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING token, id, from_entity, to_entity, invoice_number, grand_total`,
-        [saleId, from_entity, to_entity, generatedInvoiceNumber, amount, gst, grand_total, 'pending']
+        `INSERT INTO invoices (
+          sale_id, from_entity, to_entity, invoice_number, amount, gst, grand_total, status,
+          invoice_type, seller_name, seller_address, seller_mob, seller_gst, seller_pan,
+          buyer_name, buyer_address, buyer_mob, buyer_gst
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) 
+         RETURNING token, id, from_entity, to_entity, invoice_number, grand_total`,
+        [
+          saleId, from_entity, to_entity, generatedInvoiceNumber, amount, gst, grand_total, 'pending',
+          'PO', cd.sellerName, cd.sellerAddress, cd.sellerMob, cd.sellerGst, cd.sellerPan,
+          cd.buyerName, cd.buyerAddress, cd.buyerMob, cd.buyerGst
+        ]
       );
 
       const dbInvoice = invoiceResult.rows[0];

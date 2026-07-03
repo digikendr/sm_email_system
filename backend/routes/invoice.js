@@ -3,7 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const db = require('../db');
-const { requireAuthHTML } = require('../middleware/auth');
+const { requireAuth, requireAuthHTML } = require('../middleware/auth');
 
 // Helper to replace placeholders inside HTML templates
 function renderTemplate(fileName, data) {
@@ -125,7 +125,7 @@ router.post('/invoice/accept', async (req, res) => {
     const assignedNumber = `${prefix}${invoice_number_suffix.trim()}`;
 
     await db.query(
-      'UPDATE invoices SET invoice_number = $1, status = $2, accepted_at = $3 WHERE id = $4',
+      "UPDATE invoices SET invoice_number = $1, status = $2, accepted_at = $3, invoice_type = 'PI' WHERE id = $4",
       [assignedNumber, 'accepted', new Date().toISOString(), invoice.id]
     );
 
@@ -242,6 +242,16 @@ router.get('/invoice/:invoice_number/pdf', requireAuthHTML, async (req, res) => 
       gst: dbData.gst,
       grand_total: dbData.grand_total,
       hsn: dbData.items.length > 0 ? dbData.items[0].hsn : 'N/A',
+      invoice_type: dbData.invoice_type,
+      seller_name: dbData.seller_name,
+      seller_address: dbData.seller_address,
+      seller_mob: dbData.seller_mob,
+      seller_gst: dbData.seller_gst,
+      seller_pan: dbData.seller_pan,
+      buyer_name: dbData.buyer_name,
+      buyer_address: dbData.buyer_address,
+      buyer_mob: dbData.buyer_mob,
+      buyer_gst: dbData.buyer_gst,
       items: dbData.items.map(item => ({
         name: item.product_name,
         cat: item.category,
@@ -261,6 +271,150 @@ router.get('/invoice/:invoice_number/pdf', requireAuthHTML, async (req, res) => 
   } catch (err) {
     console.error('Failed to generate PDF on the fly:', err);
     return res.status(500).send('Internal Server Error generating PDF');
+  }
+});
+
+// PUT /api/invoices/:id
+router.put('/api/invoices/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const {
+    seller_name, seller_address, seller_mob, seller_gst, seller_pan,
+    buyer_name, buyer_address, buyer_mob, buyer_gst,
+    items
+  } = req.body;
+
+  try {
+    // 1. Fetch current invoice status and verify it is a PI
+    const checkRes = await db.query('SELECT status, invoice_type FROM invoices WHERE id = $1', [id]);
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const { status, invoice_type } = checkRes.rows[0];
+    if (invoice_type !== 'PI') {
+      return res.status(400).json({ error: 'Only Proforma Invoices (PI) can be edited.' });
+    }
+
+    if (status === 'cancelled') {
+      return res.status(400).json({ error: 'Cancelled invoices cannot be edited.' });
+    }
+
+    // 2. Update line items if provided and recalculate invoice totals
+    if (items && Array.isArray(items)) {
+      let subtotal = 0;
+      for (const item of items) {
+        // Fetch current rate for this item
+        const itemRes = await db.query('SELECT rate FROM invoice_items WHERE id = $1', [item.id]);
+        if (itemRes.rows.length > 0) {
+          const rate = Number(itemRes.rows[0].rate);
+          const total = Number((item.qty * rate).toFixed(2));
+          subtotal += total;
+          await db.query(
+            'UPDATE invoice_items SET qty = $1, total = $2 WHERE id = $3',
+            [item.qty, total, item.id]
+          );
+        }
+      }
+
+      // Fetch current invoice amount and gst to determine gst rate ratio
+      const invRes = await db.query('SELECT amount, gst FROM invoices WHERE id = $1', [id]);
+      if (invRes.rows.length > 0) {
+        const currentAmount = Number(invRes.rows[0].amount);
+        const currentGst = Number(invRes.rows[0].gst);
+        const gstRatio = currentAmount > 0 ? (currentGst / currentAmount) : 0;
+
+        const newGst = Number((subtotal * gstRatio).toFixed(2));
+        const newGrandTotal = Number((subtotal + newGst).toFixed(2));
+
+        await db.query(
+          'UPDATE invoices SET amount = $1, gst = $2, grand_total = $3 WHERE id = $4',
+          [subtotal, newGst, newGrandTotal, id]
+        );
+      }
+    }
+
+    // 3. Update seller/buyer text details
+    const query = `
+      UPDATE invoices
+      SET seller_name = $1, seller_address = $2, seller_mob = $3, seller_gst = $4, seller_pan = $5,
+          buyer_name = $6, buyer_address = $7, buyer_mob = $8, buyer_gst = $9
+      WHERE id = $10
+      RETURNING *;
+    `;
+    const finalResult = await db.query(query, [
+      seller_name, seller_address, seller_mob, seller_gst, seller_pan,
+      buyer_name, buyer_address, buyer_mob, buyer_gst,
+      id
+    ]);
+
+    return res.json({ success: true, invoice: finalResult.rows[0] });
+  } catch (err) {
+    console.error('Error updating invoice:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/invoices/:id/convert
+router.post('/api/invoices/:id/convert', requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const checkRes = await db.query('SELECT status, invoice_type FROM invoices WHERE id = $1', [id]);
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const { status, invoice_type } = checkRes.rows[0];
+    if (invoice_type !== 'PI') {
+      return res.status(400).json({ error: 'Only Proforma Invoices (PI) can be converted to TAX invoices.' });
+    }
+    if (status === 'cancelled') {
+      return res.status(400).json({ error: 'Cancelled invoices cannot be converted.' });
+    }
+
+    const result = await db.query(
+      "UPDATE invoices SET invoice_type = 'TAX' WHERE id = $1 RETURNING *",
+      [id]
+    );
+
+    return res.json({ success: true, invoice: result.rows[0] });
+  } catch (err) {
+    console.error('Error converting invoice:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/invoices/:id/cancel
+router.post('/api/invoices/:id/cancel', requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Check if the invoice exists and is a pending PI
+    const checkRes = await db.query('SELECT status, invoice_type FROM invoices WHERE id = $1', [id]);
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const { status, invoice_type } = checkRes.rows[0];
+    if (invoice_type !== 'PI') {
+      return res.status(400).json({ error: "Only Proforma Invoices (PI) can be cancelled." });
+    }
+    if (status !== 'accepted') {
+      if (status === 'cancelled') {
+        return res.status(400).json({ error: "Invoice is already cancelled." });
+      }
+      return res.status(400).json({ error: `Cannot cancel invoice because its status is '${status}'.` });
+    }
+
+    const result = await db.query(
+      "UPDATE invoices SET status = 'cancelled' WHERE id = $1 RETURNING *",
+      [id]
+    );
+
+    return res.json({ success: true, invoice: result.rows[0] });
+  } catch (err) {
+    console.error('Error cancelling invoice:', err);
+    return res.status(500).json({ error: err.message });
   }
 });
 

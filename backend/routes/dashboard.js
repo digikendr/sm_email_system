@@ -35,7 +35,41 @@ const formatDate = (dateStr) => {
 router.get('/api/dashboard', requireAuth, async (req, res) => {
   try {
     const query = `
-      SELECT s.*, COALESCE(json_agg(i.*) FILTER (WHERE i.id IS NOT NULL), '[]') AS invoices
+      SELECT s.*, COALESCE(
+        json_agg(
+          json_build_object(
+            'id', i.id,
+            'sale_id', i.sale_id,
+            'from_entity', i.from_entity,
+            'to_entity', i.to_entity,
+            'invoice_number', i.invoice_number,
+            'amount', i.amount,
+            'gst', i.gst,
+            'grand_total', i.grand_total,
+            'token', i.token,
+            'status', i.status,
+            'emailed_at', i.emailed_at,
+            'accepted_at', i.accepted_at,
+            'rejected_at', i.rejected_at,
+            'pdf_url', i.pdf_url,
+            'invoice_type', i.invoice_type,
+            'seller_name', i.seller_name,
+            'seller_address', i.seller_address,
+            'seller_mob', i.seller_mob,
+            'seller_gst', i.seller_gst,
+            'seller_pan', i.seller_pan,
+            'buyer_name', i.buyer_name,
+            'buyer_address', i.buyer_address,
+            'buyer_mob', i.buyer_mob,
+            'buyer_gst', i.buyer_gst,
+            'items', (
+              SELECT COALESCE(json_agg(ii.*), '[]')
+              FROM invoice_items ii
+              WHERE ii.invoice_id = i.id
+            )
+          )
+        ) FILTER (WHERE i.id IS NOT NULL), '[]'
+      ) AS invoices
       FROM sales s
       LEFT JOIN invoices i ON i.sale_id = s.id
       GROUP BY s.id
